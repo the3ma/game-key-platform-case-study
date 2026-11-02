@@ -3,53 +3,865 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Case study: automating digital game-key sales end to end</title>
-  <meta name="description" content="How I designed and built a platform that turns every paid order into a delivered game key automatically, safely, and without ever buying a key twice.">
-  <meta property="og:title" content="Case study: automating digital game-key sales end to end">
-  <meta property="og:description" content="Business problem, constraints, design decisions and architecture of a full-stack order-to-key delivery platform.">
+  <title>Game-key fulfilment platform · Case study</title>
+  <meta name="description" content="Case study: how a retailer's paid orders became delivered game keys automatically, safely and never bought twice. Business problem, risk mapping, architecture, decisions, trade-offs and results.">
+  <meta property="og:title" content="Game-key fulfilment platform · Case study">
+  <meta property="og:description" content="From paid order to delivered game key: risk mapping, architecture, design decisions and trade-offs of an order-to-key platform.">
   <meta property="og:type" content="article">
+  <meta name="color-scheme" content="light dark">
+  <link rel="preload" href="assets/fonts/schibsted-grotesk-latin-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="assets/styles.css">
   <script>
-    // Apply a saved theme before first paint (no flash). No saved choice = follow the system setting.
-    try {
-      var saved = localStorage.getItem('theme');
-      if (saved === 'light' || saved === 'dark') document.documentElement.setAttribute('data-theme', saved);
-    } catch (e) {}
+    // Apply a saved theme before first paint. No saved choice = follow the system setting.
+    (function () {
+      var root = document.documentElement, saved = null;
+      try { saved = localStorage.getItem('theme'); } catch (e) {}
+      if (saved === 'light' || saved === 'dark') root.setAttribute('data-theme', saved);
+      var dark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+      root.setAttribute('data-resolved', dark ? 'dark' : 'light');
+    })();
   </script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 
-<header class="nav">
+<header class="topbar">
   <div class="wrap">
-    <a class="brand" href="#top">the3ma &middot; case study</a>
-    <nav aria-label="Sections">
-      <ul>
-        <li><a href="#problem">Problem</a></li>
-        <li><a href="#hard">Constraints</a></li>
-        <li><a href="#decisions">Decisions</a></li>
-        <li><a href="#architecture">Architecture</a></li>
-        <li><a href="#outcome">Outcome</a></li>
-        <li><a href="#contact">Contact</a></li>
-      </ul>
-    </nav>
-    <button class="theme-toggle" type="button" id="theme-toggle" aria-pressed="false">Black theme</button>
+    <a class="product" href="#top"><strong><span class="long">Game-key fulfilment platform</span><span class="short">Game-key platform</span></strong><span class="sub">· Case study</span></a>
+    <div class="topbar-actions">
+      <button class="btn btn-secondary btn-sm theme-toggle" type="button" id="theme-toggle" aria-pressed="false">
+        <svg class="icon-moon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        <svg class="icon-sun" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1v1.6M8 13.4V15M1 8h1.6M13.4 8H15M3 3l1.1 1.1M11.9 11.9 13 13M3 13l1.1-1.1M11.9 4.1 13 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span class="label">Dark theme</span>
+      </button>
+      <a class="btn btn-primary btn-sm topbar-contact" href="#contact" aria-label="Contact"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="3.25" width="12.5" height="9.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="m2.5 4.5 5.5 4 5.5-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><span class="label">Contact</span></a>
+    </div>
   </div>
+  <div class="progress" aria-hidden="true"></div>
 </header>
+
+<main id="main">
+
+<!-- ============ HERO ============ -->
+<section class="hero" id="top" aria-labelledby="title">
+  <div class="wrap">
+    <div class="hero-grid">
+    <div class="hero-copy">
+    <h1 id="title">From paid order to delivered game key &mdash; automatically, and never bought twice.</h1>
+    <p class="lead">A retailer sells digital game keys on its Shopify store and buys each one from a wholesale distributor. I designed and built the platform between them: it keeps the catalog and every price in sync, buys the key the moment an order is paid, and delivers it through a secure customer portal &mdash; with an audit trail behind every step.</p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="#contact">Contact</a>
+      <a class="btn btn-secondary" href="#architecture">Read the architecture</a>
+    </div>
+    </div>
+    <figure class="hero-fig" aria-labelledby="hero-fig-t">
+      <header><h2 id="hero-fig-t">The one rule: claim before you buy</h2></header>
+      <div class="hero-fig-body">
+        <svg class="dg" viewBox="0 0 340 330" role="img" aria-labelledby="hf-t hf-d">
+          <title id="hf-t">Claim before buy</title>
+          <desc id="hf-d">An order is saved with its key pending. A worker claims the key, moving it to processing, so a repeated job skips it. Only then does the supplier sell the key, and the answer is kept in the job. The key is saved as booked, only over processing.</desc>
+          <defs><marker id="arh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker><marker id="arhs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="arrow strong" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+          <rect class="box" x="10" y="8" width="320" height="58" rx="10"/>
+          <text class="title" x="170" y="33" text-anchor="middle">Order paid</text>
+          <text class="small" x="170" y="52" text-anchor="middle">one key per item, saved as PENDING</text>
+          <line class="edge" x1="170" y1="66" x2="170" y2="88" marker-end="url(#arh)"/>
+          <rect class="core" x="10" y="90" width="320" height="58" rx="10"/>
+          <text class="title" x="170" y="115" text-anchor="middle">Worker claims the key</text>
+          <text class="small" x="170" y="134" text-anchor="middle">PENDING &#8594; PROCESSING; a repeat skips it</text>
+          <line class="edge strong" x1="170" y1="148" x2="170" y2="170" marker-end="url(#arhs)"/>
+          <rect class="ext" x="10" y="172" width="320" height="58" rx="10"/>
+          <text class="title" x="170" y="197" text-anchor="middle">Supplier sells it</text>
+          <text class="small" x="170" y="216" text-anchor="middle">the answer is kept in the job</text>
+          <line class="edge" x1="170" y1="230" x2="170" y2="252" marker-end="url(#arh)"/>
+          <rect class="ok" x="10" y="254" width="320" height="58" rx="10"/>
+          <text class="title" x="170" y="279" text-anchor="middle">Key saved: KEY_BOOKED</text>
+          <text class="small" x="170" y="298" text-anchor="middle">written only over PROCESSING</text>
+        </svg>
+      </div>
+      <figcaption><p>A retried, stalled or re-queued job finds the key already claimed, so it never pays twice. Full flow in Figure 2.</p></figcaption>
+    </figure>
+    </div>
+    <dl class="meta">
+      <div><dt>My role</dt><dd>Architect &amp; full-stack engineer</dd></div>
+      <div><dt>Scope</dt><dd>API &amp; workers, admin portal, customer portal, infrastructure</dd></div>
+      <div><dt>Stack</dt><dd>NestJS, Vue 3, PostgreSQL, Redis / BullMQ, Docker</dd></div>
+      <div><dt>Status</dt><dd>In production &middot; client anonymized</dd></div>
+    </dl>
+  </div>
+</section>
+
+<div class="wrap layout">
+
+  <nav class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ol>
+      <li><a href="#summary">Summary</a></li>
+      <li><a href="#context">Context &amp; problem</a></li>
+      <li><a href="#discovery">Discovery</a></li>
+      <li><a href="#insights">Insights</a></li>
+      <li><a href="#users">Who it serves</a></li>
+      <li><a href="#architecture">Architecture</a></li>
+      <li><a href="#decisions">Design decisions</a></li>
+      <li><a href="#implementation">Implementation</a></li>
+      <li><a href="#tradeoffs">Trade-offs</a></li>
+      <li><a href="#results">Results</a></li>
+      <li><a href="#lessons">Lessons learned</a></li>
+      <li><a href="#next">What&rsquo;s next</a></li>
+      <li><a href="#contact">Contact</a></li>
+    </ol>
+  </nav>
+
+  <article class="article">
+
+    <details class="toc-mobile">
+      <summary><span>On this page</span><span class="toc-current"></span></summary>
+      <ol>
+        <li><a href="#summary">Summary</a></li>
+        <li><a href="#context">Context &amp; problem</a></li>
+        <li><a href="#discovery">Discovery</a></li>
+        <li><a href="#insights">Insights</a></li>
+        <li><a href="#users">Who it serves</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#decisions">Design decisions</a></li>
+        <li><a href="#implementation">Implementation</a></li>
+        <li><a href="#tradeoffs">Trade-offs</a></li>
+        <li><a href="#results">Results</a></li>
+        <li><a href="#lessons">Lessons learned</a></li>
+        <li><a href="#next">What&rsquo;s next</a></li>
+        <li><a href="#contact">Contact</a></li>
+      </ol>
+    </details>
+
+    <!-- ============ SUMMARY ============ -->
+    <section class="section summary" id="summary" aria-labelledby="h-summary">
+      <h2 id="h-summary">Executive summary</h2>
+      <p class="intro">The whole story in thirty seconds.</p>
+      <div class="ruled-3">
+        <div>
+          <h3>The problem</h3>
+          <p>Every paid order needed a key bought from a supplier and delivered by hand, across thousands of products priced per country and currency. Mistakes cost real money: a key bought twice is paid twice.</p>
+        </div>
+        <div>
+          <h3>The approach</h3>
+          <p>Map every flow by what its failure would cost, then design the failure paths first: claim before buying, queue every external call, give every unknown outcome a named state and a human fix.</p>
+        </div>
+        <div>
+          <h3>The outcome</h3>
+          <p>Orders become delivered keys with no one in the loop; staff see and fix the rare exception themselves; any order or price change can be traced end to end.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ CONTEXT ============ -->
+    <section class="section" id="context" aria-labelledby="h-context">
+      <h2 id="h-context">Context &amp; problem</h2>
+      <p class="intro">The retailer&rsquo;s product is not stock on a shelf. It is a code bought from a supplier on demand, so the business is only as good as the link between the store and the supplier.</p>
+      <ol class="flow" aria-label="How the business works">
+        <li><b>Shopify store</b><span>Customers browse and pay</span></li>
+        <li class="arrow" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M2 8h11M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></li>
+        <li class="core"><b>The platform</b><span>Syncs the catalog, buys and delivers keys</span></li>
+        <li class="arrow" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M2 8h11M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></li>
+        <li><b>Key distributor</b><span>Sells keys, prices and stock per region</span></li>
+      </ol>
+      <div class="grid grid-2">
+        <div class="card">
+          <h3>Without the platform</h3>
+          <ul>
+            <li>Thousands of products whose prices differ per country and currency and change daily at the supplier.</li>
+            <li>Stock is regional: a key sold into the wrong region is a refund and an unhappy customer.</li>
+            <li>Every paid order needs someone to buy the key and send it by hand.</li>
+            <li>A key bought twice is paid twice; a wrong price is sold at a loss.</li>
+            <li>No answer to &ldquo;what happened to this order?&rdquo; or &ldquo;who changed this price?&rdquo;</li>
+          </ul>
+        </div>
+        <div class="card card-inverse">
+          <h3>What the business needed</h3>
+          <ul>
+            <li>The store always shows what the supplier can deliver, at the right price for each market.</li>
+            <li>A paid order becomes a delivered key with no human in the loop.</li>
+            <li>When something does go wrong, staff see it and fix it without a developer.</li>
+            <li>Every money-relevant action is traceable end to end.</li>
+            <li>A key is only ever shown to the customer who bought it.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ DISCOVERY ============ -->
+    <section class="section" id="discovery" aria-labelledby="h-discovery">
+      <h2 id="h-discovery">Discovery: mapping the risk</h2>
+      <p class="intro">Before choosing tools, I traced every flow end to end &mdash; orders, bulk purchases, catalog and price syncs, admin actions, customer sessions &mdash; and ranked each one by what a failure or a misuse would cost.</p>
+      <div class="table-wrap">
+        <table class="stack-sm">
+          <thead><tr><th scope="col">Tier</th><th scope="col">What it protects</th><th scope="col">Examples</th><th scope="col">Rule</th></tr></thead>
+          <tbody>
+            <tr><td data-label="Tier"><span class="tier tier-critical">Critical</span></td><td data-label="What it protects">Money, a customer&rsquo;s key, the price we sell at, admin access</td><td data-label="Examples">Order &rarr; key, manual key handling, bulk orders, catalog and pricing, sign-in</td><td data-label="Rule">Traceable end to end</td></tr>
+            <tr><td data-label="Tier"><span class="tier tier-important">Important</span></td><td data-label="What it protects">Key codes, business data, configuration, dispute evidence</td><td data-label="Examples">CSV exports, destructive store changes, old and new values, who viewed a key</td><td data-label="Rule">Should be traceable</td></tr>
+            <tr><td data-label="Tier"><span class="tier">Nice to have</span></td><td data-label="What it protects">Operations and investigations</td><td data-label="Examples">Scheduled sync summaries, health signals</td><td data-label="Rule">Traced where cheap</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="source-note">23 flows were ranked this way. The ranking decided what had to be designed first, what the audit log records, and where a person stays in the loop. No user research was run; this is the project&rsquo;s own risk analysis.</p>
+    </section>
+
+    <!-- ============ INSIGHTS ============ -->
+    <section class="section" id="insights" aria-labelledby="h-insights">
+      <h2 id="h-insights">What the mapping showed</h2>
+      <p class="intro">Four findings shaped everything that followed.</p>
+      <ul class="insights">
+        <li><strong>The happy path is easy; the money is in the failure modes.</strong><span>Retries, redelivered webhooks and stalled jobs are normal in queue-based systems. Each one is a chance to pay twice.</span></li>
+        <li><strong>&ldquo;No answer&rdquo; is not &ldquo;not bought&rdquo;.</strong><span>When the supplier times out, the purchase may have gone through. Software cannot know; it has to stop and ask a person.</span></li>
+        <li><strong>Non-developers run the business.</strong><span>Operations and finance staff must find and fix problems from the admin portal, or every exception becomes a developer ticket.</span></li>
+        <li><strong>The key is the product.</strong><span>A key in an email, a log line or an audit entry is a key that can leak. It may only reach the customer, through an authenticated page.</span></li>
+      </ul>
+    </section>
+
+    <!-- ============ USERS ============ -->
+    <section class="section" id="users" aria-labelledby="h-users">
+      <h2 id="h-users">Who it serves</h2>
+      <p class="intro">Three groups, three different jobs. Their pain points became the platform&rsquo;s requirements.</p>
+      <div class="grid grid-3">
+        <article class="card persona">
+          <h3>Operations staff</h3>
+          <p class="role">Run the daily business in the admin portal</p>
+          <dl>
+            <div><dt>Job</dt><dd>Resolve pending and failed keys, manage products, prices, promotions and bulk orders, watch system health.</dd></div>
+            <div><dt>Pain points</dt><dd>Actions trigger background syncs whose results arrive later; writes reach the live store; dense multi-currency data.</dd></div>
+            <div><dt>What they got</dt><dd>Problems visible on the dashboard with a one-click fix, and clear confirmation before any action that touches the store or the supplier.</dd></div>
+          </dl>
+        </article>
+        <article class="card persona">
+          <h3>Finance</h3>
+          <p class="role">Report on revenue and margins</p>
+          <dl>
+            <div><dt>Job</dt><dd>Pull reports, VAT, exchange rates, partner revenue share and key-storage figures.</dd></div>
+            <div><dt>Pain points</dt><dd>Numbers must be exact across currencies, and getting them used to mean asking a developer.</dd></div>
+            <div><dt>What they got</dt><dd>Exact, sortable figures and CSV exports, each export recorded in the audit log.</dd></div>
+          </dl>
+        </article>
+        <article class="card persona">
+          <h3>Customers</h3>
+          <p class="role">Buy a game on the store</p>
+          <dl>
+            <div><dt>Job</dt><dd>Get the key they paid for, quickly and safely.</dd></div>
+            <div><dt>Pain points</dt><dd>Waiting with no news; keys sent in plain email that anyone can forward.</dd></div>
+            <div><dt>What they got</dt><dd>An email with a link, sign-in with their existing store account, and the key shown only after an ownership check.</dd></div>
+          </dl>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ ARCHITECTURE ============ -->
+    <section class="section" id="architecture" aria-labelledby="h-architecture">
+      <h2 id="h-architecture">Solution architecture</h2>
+      <p class="intro">Three applications, one database, one queue broker and five external systems. One API backend owns every business rule and every integration; the two portals stay thin.</p>
+      <div class="figures">
+        <figure>
+          <header><h3>System context</h3><span>Figure 1</span></header>
+        <div class="diagram" tabindex="0" role="region" aria-label="System context diagram">
+          <svg class="dg" viewBox="0 0 920 440" role="img" aria-labelledby="sys-t sys-d">
+            <title id="sys-t">System context and containers</title>
+            <desc id="sys-d">Customers and staff reach the platform through a CDN. A reverse proxy routes to the admin portal, the customer portal and the API with its workers. The API uses Redis and PostgreSQL and talks to the Shopify store, the key distributor, an email API, a game metadata API and an exchange-rate source.</desc>
+            <defs>
+              <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
+              <marker id="arv" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow strong" d="M0,0 L10,5 L0,10 z"/></marker>
+            </defs>
+  
+            <!-- buys -->
+            <path class="edge" d="M80,60 C80,2 822,2 822,40" marker-end="url(#ar)" stroke-dasharray="5 4"/>
+            <rect class="label-bg" x="360" y="0" width="140" height="18"/><text class="small" x="430" y="13" text-anchor="middle">customer buys on the store</text>
+  
+            <!-- actors -->
+            <rect class="actor" x="20" y="60" width="120" height="48" rx="24"/>
+            <text class="title" x="80" y="89" text-anchor="middle">Customer</text>
+            <rect class="actor" x="20" y="320" width="120" height="48" rx="24"/>
+            <text class="title" x="80" y="349" text-anchor="middle">Staff</text>
+  
+            <!-- edge -->
+            <rect class="ext" x="175" y="190" width="115" height="56" rx="10"/>
+            <text class="title" x="232" y="214" text-anchor="middle">CDN</text>
+            <text class="small" x="232" y="232" text-anchor="middle">DNS &middot; TLS</text>
+  
+            <line class="edge" x1="140" y1="100" x2="190" y2="190" marker-end="url(#ar)"/>
+            <line class="edge" x1="140" y1="330" x2="190" y2="246" marker-end="url(#ar)"/>
+  
+            <!-- platform -->
+            <rect class="frame" x="320" y="24" width="370" height="400" rx="16"/>
+            <text class="small" x="336" y="44">Platform &middot; Docker Compose on one cloud VM</text>
+  
+            <rect class="box" x="338" y="190" width="104" height="56" rx="10"/>
+            <text class="title" x="390" y="214" text-anchor="middle">Reverse</text>
+            <text class="title" x="390" y="231" text-anchor="middle">proxy</text>
+            <line class="edge" x1="290" y1="218" x2="336" y2="218" marker-end="url(#ar)"/>
+  
+            <rect class="box" x="470" y="56" width="200" height="50" rx="10"/>
+            <text class="title" x="570" y="78" text-anchor="middle">Admin portal</text>
+            <text class="small" x="570" y="95" text-anchor="middle">Vue 3 &middot; Vuetify &middot; Pinia</text>
+  
+            <rect class="box" x="470" y="122" width="200" height="50" rx="10"/>
+            <text class="title" x="570" y="144" text-anchor="middle">Customer portal</text>
+            <text class="small" x="570" y="161" text-anchor="middle">NestJS &middot; server-rendered</text>
+  
+            <rect class="core" x="470" y="192" width="200" height="68" rx="10"/>
+            <text class="title" x="570" y="216" text-anchor="middle">API backend + workers</text>
+            <text class="small" x="570" y="234" text-anchor="middle">NestJS &middot; BullMQ queues</text>
+            <text class="small" x="570" y="250" text-anchor="middle">scheduled syncs &middot; audit</text>
+  
+            <rect class="box" x="470" y="300" width="95" height="60" rx="10"/>
+            <text class="title" x="517" y="321" text-anchor="middle">Redis</text>
+            <text class="small" x="517" y="338" text-anchor="middle">queues</text><text class="small" x="517" y="352" text-anchor="middle">sessions</text>
+            <rect class="box" x="575" y="300" width="95" height="60" rx="10"/>
+            <text class="title" x="622" y="321" text-anchor="middle">PostgreSQL</text>
+            <text class="small" x="622" y="338" text-anchor="middle">orders &middot; keys</text><text class="small" x="622" y="352" text-anchor="middle">audit log</text>
+  
+            <line class="edge" x1="442" y1="205" x2="468" y2="88" marker-end="url(#ar)"/>
+            <line class="edge" x1="442" y1="212" x2="468" y2="150" marker-end="url(#ar)"/>
+            <line class="edge" x1="442" y1="225" x2="468" y2="225" marker-end="url(#ar)"/>
+            <line class="edge" x1="530" y1="260" x2="520" y2="298" marker-end="url(#ar)"/>
+            <line class="edge" x1="610" y1="260" x2="620" y2="298" marker-end="url(#ar)"/>
+  
+            <!-- externals -->
+            <rect class="ext" x="740" y="40" width="165" height="48" rx="10"/>
+            <text class="title" x="822" y="61" text-anchor="middle">Shopify store</text>
+            <text class="small" x="822" y="77" text-anchor="middle">catalog &middot; webhook</text>
+            <rect class="ext" x="740" y="120" width="165" height="48" rx="10"/>
+            <text class="title" x="822" y="141" text-anchor="middle">Key distributor</text>
+            <text class="small" x="822" y="157" text-anchor="middle">book &middot; confirm keys</text>
+            <rect class="ext" x="740" y="200" width="165" height="48" rx="10"/>
+            <text class="title" x="822" y="221" text-anchor="middle">Email API</text>
+            <text class="small" x="822" y="237" text-anchor="middle">transactional email</text>
+            <rect class="ext" x="740" y="280" width="165" height="48" rx="10"/>
+            <text class="title" x="822" y="301" text-anchor="middle">Game metadata API</text>
+            <text class="small" x="822" y="317" text-anchor="middle">descriptions &middot; media</text>
+            <rect class="ext" x="740" y="355" width="165" height="48" rx="10"/>
+            <text class="title" x="822" y="376" text-anchor="middle">Exchange rates</text>
+            <text class="small" x="822" y="392" text-anchor="middle">currency conversion</text>
+  
+            <line class="edge strong" x1="672" y1="205" x2="738" y2="72" marker-start="url(#arv)" marker-end="url(#arv)"/>
+            <line class="edge strong" x1="672" y1="215" x2="738" y2="148" marker-start="url(#arv)" marker-end="url(#arv)"/>
+            <line class="edge" x1="672" y1="230" x2="738" y2="224" marker-end="url(#ar)"/>
+            <line class="edge" x1="672" y1="242" x2="738" y2="300" marker-end="url(#ar)"/>
+            <line class="edge" x1="672" y1="252" x2="738" y2="372" marker-end="url(#ar)"/>
+            <line class="edge" x1="672" y1="140" x2="738" y2="66" marker-end="url(#ar)" stroke-dasharray="4 3"/>
+            <line class="edge" x1="672" y1="152" x2="738" y2="140" marker-end="url(#ar)" stroke-dasharray="4 3"/>
+          </svg>
+        </div>
+          <figcaption><p>Blue paths are the two money-critical integrations, the store and the supplier. Dashed paths are the customer portal&rsquo;s own calls: sign-in and ownership check at the store, key confirmation at the supplier.</p></figcaption>
+        </figure>
+        <div class="table-wrap">
+          <table class="stack-sm">
+            <thead><tr><th scope="col">Component</th><th scope="col">Stack</th><th scope="col">Responsibility</th></tr></thead>
+            <tbody>
+              <tr><th scope="row" data-label="Component">API backend &amp; workers</th><td data-label="Stack">NestJS 11, TypeORM, BullMQ, scheduled jobs, Socket.IO</td><td data-label="Responsibility">Business rules, every integration, queues, audit log</td></tr>
+              <tr><th scope="row" data-label="Component">Admin portal</th><td data-label="Stack">Vue 3, Vuetify 3, Pinia, Vite</td><td data-label="Responsibility">Orders, keys, catalog, prices, partners, bulk orders, reports, health</td></tr>
+              <tr><th scope="row" data-label="Component">Customer portal</th><td data-label="Stack">NestJS 11, server-rendered (Handlebars)</td><td data-label="Responsibility">Store-account sign-in, ownership-checked order pages, key confirm and reveal</td></tr>
+              <tr><th scope="row" data-label="Component">Data</th><td data-label="Stack">PostgreSQL 15, Redis 7</td><td data-label="Responsibility">Products, orders, keys, audit log; queues and sessions</td></tr>
+              <tr><th scope="row" data-label="Component">Platform</th><td data-label="Stack">Docker Compose, nginx, GitHub Actions</td><td data-label="Responsibility">One cloud VM behind a CDN, automated build and deploy</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ DECISIONS ============ -->
+    <section class="section" id="decisions" aria-labelledby="h-decisions">
+      <h2 id="h-decisions">Design decisions</h2>
+      <p class="intro">Each decision starts from a business risk, not a technology.</p>
+      <div class="ledger">
+        <article class="ledger-row lead">
+          <div class="ledger-head"><h3>A key is never bought twice</h3>
+          <span class="tier tier-critical">Money-critical</span></div>
+          <dl>
+            <div><dt>Risk</dt><dd>Jobs are retried, stall or are re-queued; a naive worker calls the supplier again and pays for a second key.</dd></div>
+            <div><dt>Decision</dt><dd>Claim the key (<code>PENDING &rarr; PROCESSING</code>) before calling the supplier; keep the supplier&rsquo;s answer in the job until the database has it; make the order webhook idempotent.</dd></div>
+            <div class="why"><dt>Result</dt><dd>At-least-once infrastructure, exactly-once spending.</dd></div>
+          </dl>
+        </article>
+        <article class="ledger-row lead">
+          <div class="ledger-head"><h3>Every failure has a named state and a fix</h3>
+          <span class="tier tier-critical">Money-critical</span></div>
+          <dl>
+            <div><dt>Risk</dt><dd>A refused, timed-out or unknown purchase silently disappears.</dd></div>
+            <div><dt>Decision</dt><dd>An explicit key lifecycle. A timeout leaves the key <code>PROCESSING</code> with a reason on the dashboard; staff enter it by hand. Refused keys can be retried; keys whose job never started are re-queued by a sweep.</dd></div>
+            <div class="why"><dt>Result</dt><dd>No lost order, and no customer waiting on a developer.</dd></div>
+          </dl>
+        </article>
+        <article class="ledger-row">
+          <h3>Bulk purchases run on a schedule, just as safely</h3>
+          <dl>
+            <div><dt>Risk</dt><dd>Hundreds of keys bought unattended to fill key storage, spread over hours.</dd></div>
+            <div><dt>Decision</dt><dd>Split each bulk order into scheduled operations with one delayed job each; claim before buying; send the operation id as the request id on every attempt; save operation and key in one transaction.</dd></div>
+            <div class="why"><dt>Result</dt><dd>Large purchases run on their own, and none can be paid twice.</dd></div>
+          </dl>
+        </article>
+        <article class="ledger-row">
+          <h3>Everything slow or external goes through a queue</h3>
+          <dl>
+            <div><dt>Risk</dt><dd>The supplier, the store and the email provider are slower and less reliable than our own code.</dd></div>
+            <div><dt>Decision</dt><dd>Redis-backed BullMQ queues with dedicated workers. Workers throw only on temporary errors, so the queue retries them, and finish on permanent ones.</dd></div>
+            <div class="why"><dt>Result</dt><dd>A webhook is answered in milliseconds; a partner outage delays work instead of losing it.</dd></div>
+          </dl>
+        </article>
+        <article class="ledger-row">
+          <h3>Email is a queued side effect, never a blocker</h3>
+          <dl>
+            <div><dt>Risk</dt><dd>The email provider is down, but a bought key must stay bought, and a key email is sensitive.</dd></div>
+            <div><dt>Decision</dt><dd>Callers only enqueue. A worker sends with backoff retries; a bad address stops at once; if the queue is unavailable the email goes out directly. The audit keeps the receipt, never the content.</dd></div>
+            <div class="why"><dt>Result</dt><dd>No purchase ever waits for, or fails because of, email.</dd></div>
+          </dl>
+        </article>
+        <article class="ledger-row">
+          <h3>Change-only, scheduled catalog and price sync</h3>
+          <dl>
+            <div><dt>Risk</dt><dd>Thousands of products and per-market prices against a rate-limited store API.</dd></div>
+            <div><dt>Decision</dt><dd>Scheduled syncs from the supplier, one price job per product, batched by price list and skipped when unchanged; no product goes live without a base-currency price.</dd></div>
+            <div class="why"><dt>Result</dt><dd>The store sells what can be delivered, at the intended price.</dd></div>
+          </dl>
+        </article>
+        <article class="ledger-row">
+          <h3>An audit trail that can never break an order</h3>
+          <dl>
+            <div><dt>Risk</dt><dd>Disputes need evidence, but logging must not slow down or fail the order it describes.</dd></div>
+            <div><dt>Decision</dt><dd>Append-only audit fed by its own queue: every admin write, order step and customer action, with a trace id, old and new values, revert with a conflict check, and secrets masked.</dd></div>
+            <div class="why"><dt>Result</dt><dd>One search tells an order&rsquo;s full story, in order.</dd></div>
+          </dl>
+        </article>
+        <article class="ledger-row">
+          <h3>Safe by default, for staff and customers</h3>
+          <dl>
+            <div><dt>Risk</dt><dd>One click can wipe live store configuration; a guessed URL could expose someone else&rsquo;s key.</dd></div>
+            <div><dt>Decision</dt><dd>Destructive store actions need a confirmation token and alert all admins. The portal uses store sign-in (OAuth + PKCE), checks ownership on every request and rate-limits key actions.</dd></div>
+            <div class="why"><dt>Result</dt><dd>The platform protects the business from its own mistakes.</dd></div>
+          </dl>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ IMPLEMENTATION ============ -->
+    <section class="section" id="implementation" aria-labelledby="h-implementation">
+      <h2 id="h-implementation">Technical implementation</h2>
+      <p class="intro">The flows behind the decisions, redrawn from the project&rsquo;s design documentation.</p>
+      <div class="figures">
+        <figure>
+          <header><h3>Order &rarr; game key</h3><span>Figure 2</span></header>
+        <div class="diagram" tabindex="0" role="region" aria-label="Order to game key sequence diagram">
+          <svg class="dg" viewBox="0 0 940 650" role="img" aria-labelledby="seq-t seq-d">
+            <title id="seq-t">Order to game key sequence</title>
+            <desc id="seq-d">The customer pays; the store sends a verified webhook; the API saves the order with one pending key per item and queues a booking job per key; the worker claims the key, books it at the distributor, saves it as booked and queues an email with a portal link; the customer signs in to the portal, ownership is checked, the key is confirmed at the distributor and shown.</desc>
+            <defs>
+              <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
+            </defs>
+            <!-- heads -->
+            <g>
+              <rect class="actor" x="15" y="16" width="110" height="44" rx="22"/><text class="title" x="70" y="43" text-anchor="middle">Customer</text>
+              <rect class="ext" x="145" y="16" width="110" height="44" rx="10"/><text class="title" x="200" y="43" text-anchor="middle">Store</text>
+              <rect class="core" x="275" y="16" width="110" height="44" rx="10"/><text class="title" x="330" y="43" text-anchor="middle">API</text>
+              <rect class="core" x="405" y="16" width="130" height="44" rx="10"/><text class="title" x="470" y="43" text-anchor="middle">Booking worker</text>
+              <rect class="ext" x="555" y="16" width="110" height="44" rx="10"/><text class="title" x="610" y="43" text-anchor="middle">Distributor</text>
+              <rect class="core" x="685" y="16" width="110" height="44" rx="10"/><text class="title" x="740" y="43" text-anchor="middle">Email worker</text>
+              <rect class="box" x="815" y="16" width="110" height="44" rx="10"/><text class="title" x="870" y="43" text-anchor="middle">Portal</text>
+            </g>
+            <line class="life" x1="70" y1="60" x2="70" y2="635"/>
+            <line class="life" x1="200" y1="60" x2="200" y2="635"/>
+            <line class="life" x1="330" y1="60" x2="330" y2="635"/>
+            <line class="life" x1="470" y1="60" x2="470" y2="635"/>
+            <line class="life" x1="610" y1="60" x2="610" y2="635"/>
+            <line class="life" x1="740" y1="60" x2="740" y2="635"/>
+            <line class="life" x1="870" y1="60" x2="870" y2="635"/>
+  
+            <line class="edge" x1="70" y1="100" x2="198" y2="100" marker-end="url(#ar2)"/>
+            <text class="small lbl" x="135" y="93" text-anchor="middle">1 &middot; pays</text>
+  
+            <line class="edge strong" x1="200" y1="138" x2="328" y2="138" marker-end="url(#ar2)"/>
+            <text class="small lbl" x="265" y="131" text-anchor="middle">2 &middot; paid webhook (HMAC)</text>
+  
+            <rect class="note-box" x="338" y="158" width="250" height="40" rx="6"/>
+            <text class="small" x="346" y="174">3 &middot; save order + 1 key per item: PENDING</text>
+            <text class="small" x="346" y="190">redelivered webhook inserts nothing</text>
+  
+            <line class="edge" x1="330" y1="226" x2="468" y2="226" marker-end="url(#ar2)"/>
+            <text class="small lbl" x="400" y="219" text-anchor="middle">4 &middot; one job per key</text>
+  
+            <rect class="note-box" x="478" y="244" width="190" height="26" rx="6"/>
+            <text class="small" x="486" y="261">5 &middot; claim key: PROCESSING</text>
+  
+            <line class="edge strong" x1="470" y1="302" x2="608" y2="302" marker-end="url(#ar2)"/>
+            <text class="small lbl" x="540" y="295" text-anchor="middle">6 &middot; book / sell</text>
+  
+            <line class="edge" x1="610" y1="340" x2="472" y2="340" marker-end="url(#ar2)" stroke-dasharray="5 4"/>
+            <text class="small lbl" x="540" y="333" text-anchor="middle">7 &middot; operation id</text>
+  
+            <rect class="note-box" x="478" y="358" width="150" height="26" rx="6"/>
+            <text class="small" x="486" y="375">8 &middot; save: KEY_BOOKED</text>
+  
+            <line class="edge" x1="470" y1="416" x2="738" y2="416" marker-end="url(#ar2)"/>
+            <text class="small lbl" x="605" y="409" text-anchor="middle">9 &middot; queue &ldquo;key ready&rdquo; email</text>
+  
+            <line class="edge" x1="740" y1="454" x2="72" y2="454" marker-end="url(#ar2)"/>
+            <text class="small lbl" x="405" y="447" text-anchor="middle">10 &middot; email with a portal link (never the key)</text>
+  
+            <line class="edge" x1="70" y1="492" x2="868" y2="492" marker-end="url(#ar2)"/>
+            <text class="small lbl" x="470" y="485" text-anchor="middle">11 &middot; signs in with the store account (OAuth + PKCE)</text>
+  
+            <line class="edge" x1="870" y1="530" x2="202" y2="530" marker-end="url(#ar2)"/>
+            <text class="small lbl" x="535" y="523" text-anchor="middle">12 &middot; ownership check</text>
+  
+            <line class="edge strong" x1="870" y1="568" x2="612" y2="568" marker-end="url(#ar2)"/>
+            <text class="small lbl" x="740" y="561" text-anchor="middle">13 &middot; confirm booking</text>
+  
+            <line class="edge" x1="870" y1="610" x2="72" y2="610" marker-end="url(#ar2)"/>
+            <text class="small lbl" x="470" y="603" text-anchor="middle">14 &middot; key shown: KEY_ACCEPTED</text>
+          </svg>
+        </div>
+          <figcaption><p>The webhook is answered as soon as the order is saved; everything after step 3 runs on queues. The key is claimed (step 5) before any money is spent (step 6), which is what makes retries safe. Every step writes an audit entry with the store order id as its trace id.</p></figcaption>
+        </figure>
+        <figure>
+          <header><h3>Key lifecycle</h3><span>Figure 3</span></header>
+        <div class="diagram" tabindex="0" role="region" aria-label="Key lifecycle diagram">
+          <svg class="dg" viewBox="0 0 920 350" role="img" aria-labelledby="st-t st-d">
+            <title id="st-t">Digital key lifecycle</title>
+            <desc id="st-d">A key starts PENDING when the order is paid. Unknown products go to MANUAL_PENDING. The worker claims it as PROCESSING. The distributor books it (KEY_BOOKED) or refuses (FAILED, which an admin can retry). If the distributor never answers, the key stays PROCESSING with a reason until an admin provides it. A booked key becomes KEY_ACCEPTED when the customer confirms or reveals it, or KEY_REJECTED when the customer cancels.</desc>
+            <defs>
+              <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
+            </defs>
+            <circle class="dot" cx="14" cy="173" r="7"/>
+            <line class="edge" x1="21" y1="173" x2="38" y2="173" marker-end="url(#ar3)"/>
+  
+            <rect class="warn" x="40" y="150" width="140" height="46" rx="23"/><text class="title" x="110" y="178" text-anchor="middle">PENDING</text>
+            <rect class="core" x="260" y="150" width="150" height="46" rx="23"/><text class="title" x="335" y="178" text-anchor="middle">PROCESSING</text>
+            <rect class="box" x="490" y="150" width="150" height="46" rx="23"/><text class="title" x="565" y="178" text-anchor="middle">KEY_BOOKED</text>
+            <rect class="ok" x="730" y="150" width="170" height="46" rx="23"/><text class="title" x="815" y="178" text-anchor="middle">KEY_ACCEPTED</text>
+            <rect class="bad" x="730" y="40" width="170" height="46" rx="23"/><text class="title" x="815" y="68" text-anchor="middle">KEY_REJECTED</text>
+            <rect class="bad" x="260" y="40" width="150" height="46" rx="23"/><text class="title" x="335" y="68" text-anchor="middle">FAILED</text>
+            <rect class="warn" x="30" y="280" width="170" height="46" rx="23"/><text class="title" x="115" y="308" text-anchor="middle">MANUAL_PENDING</text>
+  
+            <line class="edge" x1="180" y1="173" x2="258" y2="173" marker-end="url(#ar3)"/>
+            <text class="small lbl" x="219" y="165" text-anchor="middle">claimed</text>
+            <line class="edge" x1="410" y1="173" x2="488" y2="173" marker-end="url(#ar3)"/>
+            <text class="small lbl" x="449" y="165" text-anchor="middle">booked</text>
+            <line class="edge" x1="640" y1="173" x2="728" y2="173" marker-end="url(#ar3)"/>
+            <text class="small lbl" x="684" y="152" text-anchor="middle">customer</text>
+            <text class="small lbl" x="684" y="165" text-anchor="middle">confirms</text>
+            <line class="edge" x1="600" y1="150" x2="740" y2="86" marker-end="url(#ar3)"/>
+            <text class="small lbl" x="640" y="108" text-anchor="middle">customer cancels</text>
+            <line class="edge" x1="335" y1="150" x2="335" y2="88" marker-end="url(#ar3)"/>
+            <text class="small lbl" x="343" y="124">distributor refused</text>
+            <path class="edge" d="M260,63 C150,63 110,90 110,148" marker-end="url(#ar3)"/>
+            <text class="small lbl" x="178" y="108" text-anchor="middle">admin retry</text>
+            <line class="edge" x1="110" y1="196" x2="110" y2="278" marker-end="url(#ar3)"/>
+            <text class="small lbl" x="118" y="242">unknown product</text>
+  
+            <path class="edge" d="M335,196 L335,240 L790,240 L790,198" marker-end="url(#ar3)" stroke-dasharray="5 4"/>
+            <text class="small lbl" x="562" y="258" text-anchor="middle">no answer in 30 s: stays PROCESSING with a reason, admin provides the key</text>
+            <path class="edge" d="M200,303 L840,303 L840,198" marker-end="url(#ar3)" stroke-dasharray="5 4"/>
+            <text class="small lbl" x="520" y="296" text-anchor="middle">admin provides the key</text>
+          </svg>
+        </div>
+          <figcaption><p>Every state has an owner and an exit. The system moves keys along the top row; the dashed paths are the staff fixes for the two cases software cannot decide alone. A key in <code>PROCESSING</code> is never retried automatically.</p></figcaption>
+        </figure>
+        <figure>
+          <header><h3>Bulk orders</h3><span>Figure 4</span></header>
+        <div class="diagram" tabindex="0" role="region" aria-label="Bulk order flow diagram">
+          <svg class="dg" viewBox="0 0 920 430" role="img" aria-labelledby="bk-t bk-d">
+            <title id="bk-t">Bulk order flow</title>
+            <desc id="bk-d">Staff plan a bulk order with products, quantities and a time window. It is split into operations spread over the window, each with a delayed job. At its time a worker claims the operation, the distributor sells the key using the operation id as request id, and the operation and key are saved together. The key is then revealed and stored, and can be viewed or exported. Operations can be cancelled before their time; a refused purchase fails and can be rescheduled; with no answer the operation stays running until staff enter the key or mark it not sold.</desc>
+            <defs>
+              <marker id="ar5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
+            </defs>
+  
+            <rect class="actor" x="10" y="40" width="165" height="74" rx="12"/>
+            <text class="title" x="92" y="66" text-anchor="middle">Staff plans it</text>
+            <text class="small" x="92" y="86" text-anchor="middle">products, quantities</text>
+            <text class="small" x="92" y="102" text-anchor="middle">and a time window</text>
+  
+            <rect class="box" x="195" y="40" width="165" height="74" rx="10"/>
+            <text class="title" x="277" y="66" text-anchor="middle">Operations queued</text>
+            <text class="small" x="277" y="86" text-anchor="middle">spread over the window</text>
+            <text class="small" x="277" y="102" text-anchor="middle">one delayed job each</text>
+  
+            <rect class="core" x="380" y="40" width="165" height="74" rx="10"/>
+            <text class="title" x="462" y="66" text-anchor="middle">Worker claims one</text>
+            <text class="small" x="462" y="86" text-anchor="middle">at its scheduled time</text>
+            <text class="small" x="462" y="102" text-anchor="middle">QUEUED &#8594; RUNNING</text>
+  
+            <rect class="ext" x="565" y="40" width="165" height="74" rx="10"/>
+            <text class="title" x="647" y="66" text-anchor="middle">Distributor sells</text>
+            <text class="small" x="647" y="86" text-anchor="middle">request id is</text>
+            <text class="small" x="647" y="102" text-anchor="middle">the operation id</text>
+  
+            <rect class="ok" x="750" y="40" width="160" height="74" rx="10"/>
+            <text class="title" x="830" y="66" text-anchor="middle">Key booked</text>
+            <text class="small" x="830" y="86" text-anchor="middle">operation + key saved</text>
+            <text class="small" x="830" y="102" text-anchor="middle">in one transaction</text>
+  
+            <line class="edge" x1="175" y1="77" x2="193" y2="77" marker-end="url(#ar5)"/>
+            <line class="edge" x1="360" y1="77" x2="378" y2="77" marker-end="url(#ar5)"/>
+            <line class="edge strong" x1="545" y1="77" x2="563" y2="77" marker-end="url(#ar5)"/>
+            <line class="edge" x1="730" y1="77" x2="748" y2="77" marker-end="url(#ar5)"/>
+  
+            <!-- branches -->
+            <rect class="bad" x="195" y="230" width="165" height="74" rx="10"/>
+            <text class="title" x="277" y="256" text-anchor="middle">Cancelled</text>
+            <text class="small" x="277" y="276" text-anchor="middle">order cancelled or</text>
+            <text class="small" x="277" y="292" text-anchor="middle">completed early</text>
+            <line class="edge" x1="277" y1="114" x2="277" y2="228" marker-end="url(#ar5)" stroke-dasharray="5 4"/>
+            <text class="small lbl" x="285" y="175">before its time</text>
+  
+            <rect class="warn" x="380" y="230" width="165" height="92" rx="10"/>
+            <text class="title" x="462" y="256" text-anchor="middle">No answer (30 s)</text>
+            <text class="small" x="462" y="276" text-anchor="middle">stays RUNNING</text>
+            <text class="small" x="462" y="292" text-anchor="middle">staff settle it:</text>
+            <text class="small" x="462" y="308" text-anchor="middle">Enter key &#183; Not sold</text>
+            <line class="edge" x1="600" y1="114" x2="490" y2="228" marker-end="url(#ar5)" stroke-dasharray="5 4"/>
+            <text class="small lbl" x="520" y="175" text-anchor="middle">no answer</text>
+  
+            <rect class="bad" x="565" y="230" width="165" height="74" rx="10"/>
+            <text class="title" x="647" y="256" text-anchor="middle">Refused</text>
+            <text class="small" x="647" y="276" text-anchor="middle">operation FAILED</text>
+            <text class="small" x="647" y="292" text-anchor="middle">staff can reschedule</text>
+            <line class="edge" x1="660" y1="114" x2="660" y2="228" marker-end="url(#ar5)"/>
+            <text class="small lbl" x="668" y="175">refused</text>
+  
+            <rect class="box" x="750" y="230" width="160" height="74" rx="10"/>
+            <text class="title" x="830" y="256" text-anchor="middle">Key revealed</text>
+            <text class="small" x="830" y="276" text-anchor="middle">code saved:</text>
+            <text class="small" x="830" y="292" text-anchor="middle">COMPLETED</text>
+            <line class="edge" x1="830" y1="114" x2="830" y2="228" marker-end="url(#ar5)"/>
+            <text class="small lbl" x="838" y="175">reveal step</text>
+  
+            <rect class="box" x="750" y="358" width="160" height="58" rx="10"/>
+            <text class="title" x="830" y="382" text-anchor="middle">Key storage</text>
+            <text class="small" x="830" y="400" text-anchor="middle">view &#183; audited export</text>
+            <line class="edge" x1="830" y1="304" x2="830" y2="356" marker-end="url(#ar5)"/>
+          </svg>
+        </div>
+          <figcaption><p>The same claim-before-buy rule, applied to scheduled purchases. Because the request id is the operation id on every attempt, a retry is recognisable as the same purchase. Dashed paths never spend money.</p></figcaption>
+        </figure>
+        <figure>
+          <header><h3>Email: a queued sender</h3><span>Figure 5</span></header>
+        <div class="diagram" tabindex="0" role="region" aria-label="Email queued sender diagram">
+          <svg class="dg" viewBox="0 0 920 345" role="img" aria-labelledby="em-t em-d">
+            <title id="em-t">Email: queued sender</title>
+            <desc id="em-d">Callers such as the booking worker, admin actions, invitations and notifications call send, which only adds a job to the email queue. The email worker renders the template and sends it through the provider's HTTP API to the inbox. Accepted emails are audited with the provider message id; temporary failures retry with backoff; a bad or inactive address is audited as failed with no retry. If the queue is unavailable the email is sent directly.</desc>
+            <defs>
+              <marker id="ar6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
+            </defs>
+  
+            <path class="edge" d="M95,110 C95,40 705,40 705,123" marker-end="url(#ar6)" stroke-dasharray="5 4"/>
+            <text class="small lbl" x="400" y="34" text-anchor="middle">queue unavailable (Redis down or no answer in 3 s): send directly</text>
+  
+            <rect class="box" x="10" y="110" width="170" height="100" rx="10"/>
+            <text class="title" x="95" y="135" text-anchor="middle">Callers</text>
+            <text class="small" x="95" y="155" text-anchor="middle">booking worker</text>
+            <text class="small" x="95" y="171" text-anchor="middle">admin actions</text>
+            <text class="small" x="95" y="187" text-anchor="middle">invites &#183; notifications</text>
+  
+            <rect class="core" x="225" y="125" width="150" height="70" rx="10"/>
+            <text class="title" x="300" y="153" text-anchor="middle">email-queue</text>
+            <text class="small" x="300" y="173" text-anchor="middle">Redis &#183; BullMQ</text>
+  
+            <rect class="core" x="420" y="115" width="170" height="90" rx="10"/>
+            <text class="title" x="505" y="142" text-anchor="middle">Email worker</text>
+            <text class="small" x="505" y="162" text-anchor="middle">renders the template</text>
+            <text class="small" x="505" y="178" text-anchor="middle">4 in parallel</text>
+  
+            <rect class="ext" x="640" y="125" width="130" height="70" rx="10"/>
+            <text class="title" x="705" y="153" text-anchor="middle">Email API</text>
+            <text class="small" x="705" y="173" text-anchor="middle">provider</text>
+  
+            <rect class="actor" x="815" y="135" width="95" height="50" rx="25"/>
+            <text class="title" x="862" y="165" text-anchor="middle">Inbox</text>
+  
+            <line class="edge strong" x1="180" y1="160" x2="223" y2="160" marker-end="url(#ar6)"/>
+            <text class="small lbl" x="201" y="150" text-anchor="middle">send()</text>
+            <line class="edge" x1="375" y1="160" x2="418" y2="160" marker-end="url(#ar6)"/>
+            <line class="edge" x1="590" y1="160" x2="638" y2="160" marker-end="url(#ar6)"/>
+            <text class="small lbl" x="614" y="150" text-anchor="middle">HTTP</text>
+            <line class="edge" x1="770" y1="160" x2="813" y2="160" marker-end="url(#ar6)"/>
+  
+            <!-- outcomes -->
+            <rect class="bad" x="140" y="255" width="230" height="66" rx="10"/>
+            <text class="title" x="255" y="281" text-anchor="middle">Bad or inactive address</text>
+            <text class="small" x="255" y="301" text-anchor="middle">audit: email.failed &#183; no retry</text>
+  
+            <rect class="warn" x="395" y="255" width="220" height="82" rx="10"/>
+            <text class="title" x="505" y="281" text-anchor="middle">Temporary failure</text>
+            <text class="small" x="505" y="301" text-anchor="middle">5xx &#183; rate limit &#183; network</text>
+            <text class="small" x="505" y="317" text-anchor="middle">retry from 30 s, doubling, ~2 h</text>
+  
+            <rect class="ok" x="640" y="255" width="270" height="66" rx="10"/>
+            <text class="title" x="775" y="281" text-anchor="middle">Accepted</text>
+            <text class="small" x="775" y="301" text-anchor="middle">audit: email.sent + provider message id</text>
+  
+            <line class="edge" x1="470" y1="205" x2="300" y2="253" marker-end="url(#ar6)"/>
+            <line class="edge" x1="505" y1="207" x2="505" y2="253" marker-start="url(#ar6)" marker-end="url(#ar6)"/>
+            <line class="edge" x1="540" y1="205" x2="720" y2="253" marker-end="url(#ar6)"/>
+          </svg>
+        </div>
+          <figcaption><p>Callers hand the email to a queue and move on. The worker owns retries and the delivery record; the audit keeps who received which template and the provider&rsquo;s receipt, never the content &mdash; a key email contains the key.</p></figcaption>
+        </figure>
+        <figure>
+          <header><h3>Delivery &amp; operations</h3><span>Figure 6</span></header>
+        <div class="diagram" tabindex="0" role="region" aria-label="Delivery pipeline diagram">
+          <svg class="dg" viewBox="0 0 920 250" role="img" aria-labelledby="dp-t dp-d">
+            <title id="dp-t">Delivery pipeline and operations</title>
+            <desc id="dp-d">A push to main runs GitHub Actions to test and build container images, which are pushed to a container registry and deployed to a single cloud VM running Docker Compose. The VM has nightly database backups and an hourly health check that alerts admins.</desc>
+            <defs>
+              <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
+            </defs>
+            <rect class="actor" x="10" y="50" width="130" height="70" rx="35"/>
+            <text class="title" x="75" y="81" text-anchor="middle">Push to</text>
+            <text class="title" x="75" y="98" text-anchor="middle">main</text>
+  
+            <rect class="box" x="180" y="50" width="180" height="70" rx="10"/>
+            <text class="title" x="270" y="76" text-anchor="middle">GitHub Actions</text>
+            <text class="small" x="270" y="94" text-anchor="middle">unit tests &middot; type-check</text>
+            <text class="small" x="270" y="109" text-anchor="middle">build images</text>
+  
+            <rect class="box" x="400" y="50" width="150" height="70" rx="10"/>
+            <text class="title" x="475" y="81" text-anchor="middle">Container</text>
+            <text class="title" x="475" y="98" text-anchor="middle">registry</text>
+  
+            <rect class="core" x="590" y="30" width="320" height="110" rx="12"/>
+            <text class="title" x="750" y="56" text-anchor="middle">Cloud VM &middot; Docker Compose</text>
+            <text class="small" x="750" y="78" text-anchor="middle">reverse proxy &middot; API + workers &middot; admin portal</text>
+            <text class="small" x="750" y="95" text-anchor="middle">customer portal &middot; PostgreSQL &middot; Redis</text>
+            <text class="small" x="750" y="112" text-anchor="middle">queue dashboard &middot; DB admin (internal only)</text>
+            <text class="small" x="750" y="129" text-anchor="middle">one Redis ACL user per app</text>
+  
+            <line class="edge" x1="140" y1="85" x2="178" y2="85" marker-end="url(#ar4)"/>
+            <line class="edge" x1="360" y1="85" x2="398" y2="85" marker-end="url(#ar4)"/>
+            <line class="edge" x1="550" y1="85" x2="588" y2="85" marker-end="url(#ar4)"/>
+  
+            <rect class="note-box" x="590" y="175" width="150" height="56" rx="8"/>
+            <text class="title" x="665" y="199" text-anchor="middle">Nightly backup</text>
+            <text class="small" x="665" y="217" text-anchor="middle">PostgreSQL dump</text>
+            <rect class="note-box" x="760" y="175" width="150" height="56" rx="8"/>
+            <text class="title" x="835" y="199" text-anchor="middle">Hourly health check</text>
+            <text class="small" x="835" y="217" text-anchor="middle">alerts admins</text>
+            <line class="edge" x1="665" y1="140" x2="665" y2="173" marker-end="url(#ar4)"/>
+            <line class="edge" x1="835" y1="140" x2="835" y2="173" marker-end="url(#ar4)"/>
+  
+            <rect class="note-box" x="10" y="175" width="540" height="56" rx="8"/>
+            <text class="small" x="24" y="198">Database migrations run by hand in production, after review.</text>
+            <text class="small" x="24" y="216">Health check: database, Redis (alert above 70% memory) and every queue.</text>
+          </svg>
+        </div>
+          <figcaption><p>Deliberately simple: one VM, one compose file, fully automated build and deploy. Operational risk is covered by backups, health alerts and the audit log rather than by more infrastructure.</p></figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ============ TRADE-OFFS ============ -->
+    <section class="section" id="tradeoffs" aria-labelledby="h-tradeoffs">
+      <h2 id="h-tradeoffs">Challenges &amp; trade-offs</h2>
+      <p class="intro">Every choice gave something up. These are the ones worth defending in an interview.</p>
+      <div class="table-wrap">
+        <table class="stack-sm">
+          <thead><tr><th scope="col">Challenge</th><th scope="col">Chose</th><th scope="col">Instead of</th><th scope="col">Why</th></tr></thead>
+          <tbody>
+            <tr><th scope="row" data-label="Challenge">Supplier never answers</th><td data-label="Chose">Stop and ask a person</td><td data-label="Instead of">Automatic retry</td><td data-label="Why">The purchase may have gone through; a retry could pay twice.</td></tr>
+            <tr><th scope="row" data-label="Challenge">No safe sandbox</th><td data-label="Chose">Read-only local testing against the live store</td><td data-label="Instead of">Writes from development</td><td data-label="Why">Any write from a local stack changes what real customers see and pay.</td></tr>
+            <tr><th scope="row" data-label="Challenge">Logging and email in the money path</th><td data-label="Chose">Queued side effects with a direct fallback</td><td data-label="Instead of">Synchronous writes</td><td data-label="Why">Recording and notifying must never slow down or fail a purchase.</td></tr>
+            <tr><th scope="row" data-label="Challenge">Infrastructure</th><td data-label="Chose">One VM with Docker Compose</td><td data-label="Instead of">More infrastructure</td><td data-label="Why">Simple to run and reason about; backups, health checks and the audit log cover the risk.</td></tr>
+            <tr><th scope="row" data-label="Challenge">Production schema changes</th><td data-label="Chose">Migrations run by hand after review</td><td data-label="Instead of">Automatic migrations on deploy</td><td data-label="Why">Control over a live system that handles money; automating it is on the roadmap.</td></tr>
+            <tr><th scope="row" data-label="Challenge">Admin UI framework</th><td data-label="Chose">Stay on Vuetify</td><td data-label="Instead of">Migrating to another component library</td><td data-label="Why">The migration was judged too costly for what it would add.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ RESULTS ============ -->
+    <section class="section" id="results" aria-labelledby="h-results">
+      <h2 id="h-results">Results</h2>
+      <p class="intro">What changed for the business, and the system figures that back it.</p>
+      <ul class="check">
+        <li><strong>Hands-off fulfilment</strong><span>A paid order becomes a delivered key without anyone touching it.</span></li>
+        <li><strong>No double spending by design</strong><span>Retries, redelivered webhooks and supplier timeouts cannot buy the same key twice.</span></li>
+        <li><strong>Exceptions handled by staff</strong><span>Pending, failed and stuck keys show on the dashboard with a fix, so operations handle support themselves.</span></li>
+        <li><strong>A catalog that stays true</strong><span>Products, stock and per-market prices follow the supplier on a schedule, without manual edits.</span></li>
+        <li><strong>Traceability end to end</strong><span>One search reconstructs any order or configuration change; finance gets numbers without a developer.</span></li>
+        <li><strong>Protected keys</strong><span>Keys reach only their owner, through an authenticated, ownership-checked portal.</span></li>
+      </ul>
+      <h3 class="subhead">System figures</h3>
+      <div class="table-wrap">
+        <table class="stack-sm">
+          <thead><tr><th scope="col">Figure</th><th scope="col">Value</th><th scope="col">What it means</th></tr></thead>
+          <tbody>
+            <tr><th scope="row" data-label="Figure">Queues with a dedicated worker</th><td class="num" data-label="Value">12</td><td data-label="What it means">Every slow or external step runs off the request path.</td></tr>
+            <tr><th scope="row" data-label="Figure">Flows ranked by business risk</th><td class="num" data-label="Value">23</td><td data-label="What it means">Three tiers decide what is designed first and what is traced.</td></tr>
+            <tr><th scope="row" data-label="Figure">Supplier timeout before a person decides</th><td class="num" data-label="Value">30 s</td><td data-label="What it means">After that the key waits, with a reason, for a human check.</td></tr>
+            <tr><th scope="row" data-label="Figure">Re-queue of keys whose job never started</th><td class="num" data-label="Value">10 min</td><td data-label="What it means">Picked up by a 30-minute sweep, so no order is forgotten.</td></tr>
+            <tr><th scope="row" data-label="Figure">Email retry window</th><td class="num" data-label="Value">~2 h</td><td data-label="What it means">8 attempts from 30 s, doubling; a bad address stops at once.</td></tr>
+            <tr><th scope="row" data-label="Figure">Queue fallback for email and audit</th><td class="num" data-label="Value">3 s</td><td data-label="What it means">If the queue does not answer, the work is done directly.</td></tr>
+            <tr><th scope="row" data-label="Figure">Operational checks</th><td class="num" data-label="Value">Hourly</td><td data-label="What it means">Database, Redis (alert above 70% memory) and every queue; nightly database backup.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="source-note">Figures are taken from the project&rsquo;s documentation. They describe how the system behaves, not business KPIs; no order volumes or revenue are published here.</p>
+    </section>
+
+    <!-- ============ LESSONS ============ -->
+    <section class="section" id="lessons" aria-labelledby="h-lessons">
+      <h2 id="h-lessons">Lessons learned</h2>
+      <p class="intro">What I would carry into the next system that moves money.</p>
+      <ul class="insights">
+        <li><strong>Design the failure path first.</strong><span>The happy path is the small part; the failure paths are where the design actually lives.</span></li>
+        <li><strong>Make &ldquo;unknown&rdquo; a first-class state.</strong><span>A state that says &ldquo;we don&rsquo;t know, a person must check&rdquo; is safer than any clever retry.</span></li>
+        <li><strong>Side effects must never block the money path.</strong><span>Logging and email are important, but neither may slow down or undo a purchase.</span></li>
+        <li><strong>Rank by business risk before deciding what to trace.</strong><span>Tracing everything is noise; tracing what can cost money is evidence.</span></li>
+      </ul>
+    </section>
+
+    <!-- ============ NEXT ============ -->
+    <section class="section" id="next" aria-labelledby="h-next">
+      <h2 id="h-next">What&rsquo;s next</h2>
+      <p class="intro">Known gaps, already on the roadmap.</p>
+      <div class="ruled-3">
+        <div><h3>Close the audit gaps</h3><p>Record the remaining planned points: order completion, each bulk-order booking, and requests rejected at the auth guard.</p></div>
+        <div><h3>Visible sync runs</h3><p>A summary for every scheduled sync run, so a silent sync failure is as visible as a failed order.</p></div>
+        <div><h3>Automated migrations</h3><p>Run production database migrations behind the same review gate as the code.</p></div>
+      </div>
+    </section>
+
+    <!-- ============ CONTACT ============ -->
+    <section class="contact" id="contact" aria-labelledby="h-contact">
+      <h2 id="h-contact">Let&rsquo;s talk about your system</h2>
+      <p>I design and build platforms where a mistake costs money. If you are hiring, or have a problem like this one, I&rsquo;d like to hear about it.</p>
+      <ul class="contact-list">
+        <li><a href="mailto:the3ma@gmail.com"><small>Email</small><b>the3ma@gmail.com</b></a></li>
+        <li><a href="https://github.com/the3ma"><small>GitHub</small><b>github.com/the3ma</b></a></li>
+      </ul>
+    </section>
+
+  </article>
+</div>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <p>Client, supplier and infrastructure details are anonymized and the codebase is private. Diagrams are simplified redraws of the project&rsquo;s own design documentation.</p>
+  </div>
+</footer>
+
 <script>
   (function () {
     var root = document.documentElement;
-    var btn = document.getElementById('theme-toggle');
     var media = window.matchMedia('(prefers-color-scheme: dark)');
+
+    // Theme toggle
+    var btn = document.getElementById('theme-toggle');
+    var label = btn.querySelector('.label');
     function isDark() {
       var t = root.getAttribute('data-theme');
       return t ? t === 'dark' : media.matches;
     }
     function render() {
       var dark = isDark();
-      btn.textContent = dark ? 'White theme' : 'Black theme';
+      root.setAttribute('data-resolved', dark ? 'dark' : 'light');
+      label.textContent = dark ? 'Light theme' : 'Dark theme';
       btn.setAttribute('aria-pressed', String(dark));
-      btn.setAttribute('aria-label', dark ? 'Switch to the white theme' : 'Switch to the black theme');
+      btn.setAttribute('aria-label', dark ? 'Switch to the light theme' : 'Switch to the dark theme');
     }
     btn.addEventListener('click', function () {
       var next = isDark() ? 'light' : 'dark';
@@ -59,612 +871,42 @@
     });
     media.addEventListener('change', render);
     render();
+
+    // Reading progress + scroll-tracked "On this page", updated once per frame.
+    var bar = document.querySelector('.progress');
+    var links = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+    var mlinks = Array.prototype.slice.call(document.querySelectorAll('.toc-mobile a'));
+    var mcurrent = document.querySelector('.toc-current');
+    var sections = links.map(function (a) { return document.getElementById(a.getAttribute('href').slice(1)); });
+    var current = null, ticking = false;
+    function update() {
+      var doc = document.documentElement;
+      var max = doc.scrollHeight - window.innerHeight;
+      bar.style.transform = 'scaleX(' + (max > 0 ? Math.min(1, window.scrollY / max) : 0) + ')';
+      // Active = the last section whose top has passed under the top bar; at the very end, the last one.
+      var line = 140, active = -1;
+      for (var i = 0; i < sections.length; i++) {
+        if (sections[i] && sections[i].getBoundingClientRect().top <= line) active = i;
+      }
+      if (max > 0 && window.scrollY >= max - 2) active = sections.length - 1;
+      if (active !== current) {
+        [links, mlinks].forEach(function (list) {
+          if (current !== null && current > -1 && list[current]) list[current].removeAttribute('aria-current');
+          if (active > -1 && list[active]) list[active].setAttribute('aria-current', 'true');
+        });
+        if (mcurrent) mcurrent.textContent = active > -1 ? links[active].textContent : '';
+        current = active;
+      }
+      ticking = false;
+    }
+    window.addEventListener('scroll', function () { if (!ticking) { ticking = true; requestAnimationFrame(update); } }, { passive: true });
+    window.addEventListener('resize', update);
+    update();
+
+    // Close the mobile contents after a jump
+    var mobile = document.querySelector('.toc-mobile');
+    if (mobile) mobile.addEventListener('click', function (e) { if (e.target.closest('a')) mobile.removeAttribute('open'); });
   })();
 </script>
-
-<main id="main">
-
-<!-- HERO -->
-<div class="hero" id="top">
-  <div class="wrap">
-    <h1>From paid order to delivered game key &mdash; automatically, safely, and never bought twice.</h1>
-    <p class="lead">An online retailer sells digital game keys on its Shopify store and buys each key from a wholesale key distributor. I designed and built the platform that connects the two: it keeps the whole catalog and every price in sync, buys a key the moment an order is paid, and delivers it to the customer through a secure portal &mdash; with a full audit trail behind every step.</p>
-    <ul class="facts">
-      <li><b>My role</b>Architect &amp; full-stack engineer</li>
-      <li><b>Scope</b>API + workers, admin portal, customer portal, infrastructure</li>
-      <li><b>Stack</b>NestJS, Vue 3, PostgreSQL, Redis / BullMQ, Docker</li>
-      <li><b>Client</b>Anonymized (private codebase)</li>
-    </ul>
-  </div>
-</div>
-
-<!-- 1 PROBLEM -->
-<section id="problem">
-  <div class="wrap">
-    <h2>The business problem</h2>
-    <p class="intro">The retailer&rsquo;s product is not physical stock &mdash; it is a code bought from a supplier on demand. That makes the business only as good as the link between the store and the supplier.</p>
-    <div class="two">
-      <div class="panel before">
-        <h3>Without the platform</h3>
-        <ul>
-          <li>Thousands of products whose prices differ per country and currency, and change daily at the supplier.</li>
-          <li>Stock is per region: a key sold in the wrong region is a refund and an unhappy customer.</li>
-          <li>Every paid order needs someone to buy the key at the supplier and send it by hand.</li>
-          <li>Mistakes cost real money: a key bought twice is paid twice; a wrong price is sold at a loss.</li>
-          <li>No answer to &ldquo;what happened to this order?&rdquo; or &ldquo;who changed this price?&rdquo;</li>
-        </ul>
-      </div>
-      <div class="panel after">
-        <h3>What the business needed</h3>
-        <ul>
-          <li>The store always shows what the supplier can actually deliver, at the right price for each market.</li>
-          <li>A paid order turns into a delivered key with no human in the loop.</li>
-          <li>When something does go wrong, staff can see it and fix it themselves &mdash; without a developer.</li>
-          <li>Every money-relevant action is traceable end to end.</li>
-          <li>Customer keys are only ever shown to the customer who bought them.</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- 2 CONSTRAINTS -->
-<section id="hard">
-  <div class="wrap">
-    <h2>What made it hard</h2>
-    <p class="intro">The happy path is simple. The real work was in the failure modes &mdash; each of them costs money or trust.</p>
-    <ul class="hard">
-      <li><b>The supplier can go silent mid-purchase</b><span>A timeout does not mean &ldquo;not bought&rdquo;. Retrying blindly could pay for the same key twice.</span></li>
-      <li><b>Webhooks arrive more than once</b><span>The store redelivers &ldquo;order paid&rdquo; events. Each one must create exactly one order.</span></li>
-      <li><b>There is no safe sandbox</b><span>The store is live: any write changes what real customers see and pay.</span></li>
-      <li><b>Prices are a moving target</b><span>Many currencies, per-country catalogs, promotions and VAT, synced from an external source on a schedule.</span></li>
-      <li><b>Non-developers run the business</b><span>Operations and finance staff must find and fix problems from the admin portal.</span></li>
-      <li><b>The key is the product</b><span>A leaked key is a lost sale. It must never sit in an email, a log or an audit entry.</span></li>
-    </ul>
-  </div>
-</section>
-
-<!-- 3 DECISIONS -->
-<section id="decisions">
-  <div class="wrap">
-    <h2>Key decisions</h2>
-    <p class="intro">Each decision starts from a business risk, not a technology. Problem &rarr; what I chose &rarr; why it matters.</p>
-
-    <article class="decision">
-      <h3>1. A key is never bought twice</h3>
-      <div class="pdw">
-        <div><span class="tag p">Problem</span><br>Jobs get retried, stall or are re-queued. A naive worker would call the supplier again and pay for a second key.</div>
-        <div><span class="tag d">Decision</span><br>The worker <em>claims</em> the key (<code>PENDING &rarr; PROCESSING</code>) before calling the supplier, so any repeat skips it. The supplier&rsquo;s answer is kept in the job until the database has it, so a failed write is retried without buying again. Incoming orders are idempotent: a redelivered webhook inserts nothing.</div>
-        <div><span class="tag w">Why it matters</span><br>Turns &ldquo;at-least-once&rdquo; infrastructure into &ldquo;exactly-once&rdquo; spending. The most expensive class of bug is designed out, not monitored for.</div>
-      </div>
-    </article>
-
-    <article class="decision">
-      <h3>2. Every failure has a named state and a fix</h3>
-      <div class="pdw">
-        <div><span class="tag p">Problem</span><br>When the supplier refuses, times out or does not know a product, the order must not silently disappear.</div>
-        <div><span class="tag d">Decision</span><br>An explicit key lifecycle (see the state diagram below). A timeout leaves the key in <code>PROCESSING</code> with a reason, shown on the dashboard; staff check the supplier and enter the key by hand. Refused keys can be retried. Keys whose job never started are re-queued automatically by a scheduled sweep.</div>
-        <div><span class="tag w">Why it matters</span><br>No order is lost and no customer waits on a developer. Support work becomes a short, visible queue instead of an investigation.</div>
-      </div>
-    </article>
-
-    <article class="decision">
-      <h3>3. Bulk purchases run on a schedule, with the same money safety</h3>
-      <div class="pdw">
-        <div><span class="tag p">Problem</span><br>Staff need to buy many keys at once to fill the retailer&rsquo;s own key storage &mdash; spread across a time window instead of in one burst, and with nobody watching each purchase.</div>
-        <div><span class="tag d">Decision</span><br>A bulk order is split into operations spread across the chosen window, each with its own delayed job. At its time the worker claims the operation (<code>QUEUED &rarr; RUNNING</code>) before buying, sends the operation id as the request id on every attempt, and writes the operation and its key in one transaction. Booked keys are revealed in a separate step and stored. A running operation can&rsquo;t be cancelled or rescheduled; an unknown outcome is settled by staff (<em>Enter key</em> / <em>Not sold</em>).</div>
-        <div><span class="tag w">Why it matters</span><br>Hundreds of purchases run unattended over hours, and none of them can be paid twice. Exporting the stored key codes is itself an audited action.</div>
-      </div>
-    </article>
-
-    <article class="decision">
-      <h3>4. Everything slow or external goes through a queue</h3>
-      <div class="pdw">
-        <div><span class="tag p">Problem</span><br>The supplier, the store and the email provider are all slower and less reliable than our own code.</div>
-        <div><span class="tag d">Decision</span><br>Redis-backed BullMQ queues with dedicated workers for booking, bulk purchases, catalog sync, per-product price sync, email and audit writes. Workers throw only on temporary errors, so the queue retries them, and finish cleanly on permanent ones, so a bad record never retries forever.</div>
-        <div><span class="tag w">Why it matters</span><br>A webhook is answered in milliseconds; an outage at a partner delays work instead of losing it.</div>
-      </div>
-    </article>
-
-    <article class="decision">
-      <h3>5. Email is a queued side effect, never a blocker</h3>
-      <div class="pdw">
-        <div><span class="tag p">Problem</span><br>The email provider can be slow or down, but a key that has been bought must stay bought &mdash; and a key email is sensitive.</div>
-        <div><span class="tag d">Decision</span><br>A queued sender: callers only call <code>MailService.send()</code>, which adds a job and returns. An email worker renders the template and sends it through the provider&rsquo;s API. Temporary failures (5xx, rate limit, network) retry from 30&nbsp;s, doubling, 8 attempts over about two hours; a bad or inactive address stops at once. If the queue itself is unavailable, the email is sent directly. Every outcome is audited with the template, the recipient and the provider&rsquo;s message id &mdash; never the content.</div>
-        <div><span class="tag w">Why it matters</span><br>No request or purchase ever waits for, or fails because of, email &mdash; and there is proof of delivery for every message without a key ever reaching the logs.</div>
-      </div>
-    </article>
-
-    <article class="decision">
-      <h3>6. Change-only, scheduled catalog and price sync</h3>
-      <div class="pdw">
-        <div><span class="tag p">Problem</span><br>Thousands of products, prices per currency and country, per-market catalogs &mdash; and the store&rsquo;s API is rate-limited.</div>
-        <div><span class="tag d">Decision</span><br>Scheduled syncs pull products, prices and stock from the supplier, enrich them with game metadata, and push to the store. Prices go one job per product, batched by price list and skipped when unchanged; a product without a base-currency price is never published.</div>
-        <div><span class="tag w">Why it matters</span><br>The store always sells what can actually be delivered, at the intended price, without hitting API limits.</div>
-      </div>
-    </article>
-
-    <article class="decision">
-      <h3>7. An audit trail that answers &ldquo;what happened?&rdquo; and can never break an order</h3>
-      <div class="pdw">
-        <div><span class="tag p">Problem</span><br>Disputes and pricing mistakes need evidence; but logging must not slow down or fail the order it describes.</div>
-        <div><span class="tag d">Decision</span><br>An append-only audit log fed through its own queue. Every admin write, every order step and every customer action is recorded with a trace id; old and new values are kept for configuration changes, which can be reverted with a conflict check. Secrets and key codes are masked before storage. Flows are ranked by business risk (critical / important / nice to have) to decide what must be traced.</div>
-        <div><span class="tag w">Why it matters</span><br>One search shows an order&rsquo;s full story &mdash; webhook, booking attempts, staff actions, customer steps &mdash; in order.</div>
-      </div>
-    </article>
-
-    <article class="decision">
-      <h3>8. Safe by default for people and for customers</h3>
-      <div class="pdw">
-        <div><span class="tag p">Problem</span><br>A single admin click can wipe live store configuration; a guessed URL could expose someone else&rsquo;s key.</div>
-        <div><span class="tag d">Decision</span><br>Destructive store operations require an explicit confirmation token and notify all admins. The customer portal signs in with the store&rsquo;s own customer accounts (OAuth + PKCE), checks order ownership on every request and rate-limits key actions. Emails carry a portal link, never the key.</div>
-        <div><span class="tag w">Why it matters</span><br>The platform protects the business from its own mistakes and the customer&rsquo;s purchase from everyone else.</div>
-      </div>
-    </article>
-  </div>
-</section>
-
-<!-- 4 ARCHITECTURE -->
-<section id="architecture">
-  <div class="wrap">
-    <h2>Architecture</h2>
-    <p class="intro">Three applications, one database, one queue broker, five external systems. Diagrams redrawn and anonymized from the project&rsquo;s design documentation.</p>
-    <p class="scroll-hint">On a small screen, swipe a diagram sideways to see all of it.</p>
-
-    <!-- System context -->
-    <figure>
-      <div class="diagram" tabindex="0" role="region" aria-label="System context diagram">
-        <svg class="dg" viewBox="0 0 920 440" role="img" aria-labelledby="sys-t sys-d">
-          <title id="sys-t">System context and containers</title>
-          <desc id="sys-d">Customers and staff reach the platform through a CDN. A reverse proxy routes to the admin portal, the customer portal and the API with its workers. The API uses Redis and PostgreSQL and talks to the Shopify store, the key distributor, an email API, a game metadata API and an exchange-rate source.</desc>
-          <defs>
-            <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
-            <marker id="arv" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow strong" d="M0,0 L10,5 L0,10 z"/></marker>
-          </defs>
-
-          <!-- buys -->
-          <path class="edge" d="M80,60 C80,2 822,2 822,40" marker-end="url(#ar)" stroke-dasharray="5 4"/>
-          <rect class="label-bg" x="360" y="0" width="140" height="18"/><text class="small" x="430" y="13" text-anchor="middle">customer buys on the store</text>
-
-          <!-- actors -->
-          <rect class="actor" x="20" y="60" width="120" height="48" rx="24"/>
-          <text class="title" x="80" y="89" text-anchor="middle">Customer</text>
-          <rect class="actor" x="20" y="320" width="120" height="48" rx="24"/>
-          <text class="title" x="80" y="349" text-anchor="middle">Staff</text>
-
-          <!-- edge -->
-          <rect class="ext" x="175" y="190" width="115" height="56" rx="10"/>
-          <text class="title" x="232" y="214" text-anchor="middle">CDN</text>
-          <text class="small" x="232" y="232" text-anchor="middle">DNS &middot; TLS</text>
-
-          <line class="edge" x1="140" y1="100" x2="190" y2="190" marker-end="url(#ar)"/>
-          <line class="edge" x1="140" y1="330" x2="190" y2="246" marker-end="url(#ar)"/>
-
-          <!-- platform -->
-          <rect class="frame" x="320" y="24" width="370" height="400" rx="16"/>
-          <text class="small" x="336" y="44">Platform &middot; Docker Compose on one cloud VM</text>
-
-          <rect class="box" x="338" y="190" width="104" height="56" rx="10"/>
-          <text class="title" x="390" y="214" text-anchor="middle">Reverse</text>
-          <text class="title" x="390" y="231" text-anchor="middle">proxy</text>
-          <line class="edge" x1="290" y1="218" x2="336" y2="218" marker-end="url(#ar)"/>
-
-          <rect class="box" x="470" y="56" width="200" height="50" rx="10"/>
-          <text class="title" x="570" y="78" text-anchor="middle">Admin portal</text>
-          <text class="small" x="570" y="95" text-anchor="middle">Vue 3 &middot; Vuetify &middot; Pinia</text>
-
-          <rect class="box" x="470" y="122" width="200" height="50" rx="10"/>
-          <text class="title" x="570" y="144" text-anchor="middle">Customer portal</text>
-          <text class="small" x="570" y="161" text-anchor="middle">NestJS &middot; server-rendered</text>
-
-          <rect class="core" x="470" y="192" width="200" height="68" rx="10"/>
-          <text class="title" x="570" y="216" text-anchor="middle">API backend + workers</text>
-          <text class="small" x="570" y="234" text-anchor="middle">NestJS &middot; BullMQ queues</text>
-          <text class="small" x="570" y="250" text-anchor="middle">scheduled syncs &middot; audit</text>
-
-          <rect class="box" x="470" y="300" width="95" height="60" rx="10"/>
-          <text class="title" x="517" y="321" text-anchor="middle">Redis</text>
-          <text class="small" x="517" y="338" text-anchor="middle">queues</text><text class="small" x="517" y="352" text-anchor="middle">sessions</text>
-          <rect class="box" x="575" y="300" width="95" height="60" rx="10"/>
-          <text class="title" x="622" y="321" text-anchor="middle">PostgreSQL</text>
-          <text class="small" x="622" y="338" text-anchor="middle">orders &middot; keys</text><text class="small" x="622" y="352" text-anchor="middle">audit log</text>
-
-          <line class="edge" x1="442" y1="205" x2="468" y2="88" marker-end="url(#ar)"/>
-          <line class="edge" x1="442" y1="212" x2="468" y2="150" marker-end="url(#ar)"/>
-          <line class="edge" x1="442" y1="225" x2="468" y2="225" marker-end="url(#ar)"/>
-          <line class="edge" x1="530" y1="260" x2="520" y2="298" marker-end="url(#ar)"/>
-          <line class="edge" x1="610" y1="260" x2="620" y2="298" marker-end="url(#ar)"/>
-
-          <!-- externals -->
-          <rect class="ext" x="740" y="40" width="165" height="48" rx="10"/>
-          <text class="title" x="822" y="61" text-anchor="middle">Shopify store</text>
-          <text class="small" x="822" y="77" text-anchor="middle">catalog &middot; webhook</text>
-          <rect class="ext" x="740" y="120" width="165" height="48" rx="10"/>
-          <text class="title" x="822" y="141" text-anchor="middle">Key distributor</text>
-          <text class="small" x="822" y="157" text-anchor="middle">book &middot; confirm keys</text>
-          <rect class="ext" x="740" y="200" width="165" height="48" rx="10"/>
-          <text class="title" x="822" y="221" text-anchor="middle">Email API</text>
-          <text class="small" x="822" y="237" text-anchor="middle">transactional email</text>
-          <rect class="ext" x="740" y="280" width="165" height="48" rx="10"/>
-          <text class="title" x="822" y="301" text-anchor="middle">Game metadata API</text>
-          <text class="small" x="822" y="317" text-anchor="middle">descriptions &middot; media</text>
-          <rect class="ext" x="740" y="355" width="165" height="48" rx="10"/>
-          <text class="title" x="822" y="376" text-anchor="middle">Exchange rates</text>
-          <text class="small" x="822" y="392" text-anchor="middle">currency conversion</text>
-
-          <line class="edge strong" x1="672" y1="205" x2="738" y2="72" marker-start="url(#arv)" marker-end="url(#arv)"/>
-          <line class="edge strong" x1="672" y1="215" x2="738" y2="148" marker-start="url(#arv)" marker-end="url(#arv)"/>
-          <line class="edge" x1="672" y1="230" x2="738" y2="224" marker-end="url(#ar)"/>
-          <line class="edge" x1="672" y1="242" x2="738" y2="300" marker-end="url(#ar)"/>
-          <line class="edge" x1="672" y1="252" x2="738" y2="372" marker-end="url(#ar)"/>
-          <line class="edge" x1="672" y1="140" x2="738" y2="66" marker-end="url(#ar)" stroke-dasharray="4 3"/>
-          <line class="edge" x1="672" y1="152" x2="738" y2="140" marker-end="url(#ar)" stroke-dasharray="4 3"/>
-        </svg>
-      </div>
-      <figcaption><b>System context.</b> One API backend owns all business logic and every external integration; the admin and customer portals are thin. Bold arrows are the two money-critical integrations (store and supplier); dashed arrows are the customer portal&rsquo;s own calls (sign-in and ownership check at the store, key confirmation at the supplier).</figcaption>
-    </figure>
-
-    <!-- Sequence -->
-    <figure>
-      <div class="diagram" tabindex="0" role="region" aria-label="Order to game key sequence diagram">
-        <svg class="dg" viewBox="0 0 940 650" role="img" aria-labelledby="seq-t seq-d">
-          <title id="seq-t">Order to game key sequence</title>
-          <desc id="seq-d">The customer pays; the store sends a verified webhook; the API saves the order with one pending key per item and queues a booking job per key; the worker claims the key, books it at the distributor, saves it as booked and queues an email with a portal link; the customer signs in to the portal, ownership is checked, the key is confirmed at the distributor and shown.</desc>
-          <defs>
-            <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
-          </defs>
-          <!-- heads -->
-          <g>
-            <rect class="actor" x="15" y="16" width="110" height="44" rx="22"/><text class="title" x="70" y="43" text-anchor="middle">Customer</text>
-            <rect class="ext" x="145" y="16" width="110" height="44" rx="10"/><text class="title" x="200" y="43" text-anchor="middle">Store</text>
-            <rect class="core" x="275" y="16" width="110" height="44" rx="10"/><text class="title" x="330" y="43" text-anchor="middle">API</text>
-            <rect class="core" x="405" y="16" width="130" height="44" rx="10"/><text class="title" x="470" y="43" text-anchor="middle">Booking worker</text>
-            <rect class="ext" x="555" y="16" width="110" height="44" rx="10"/><text class="title" x="610" y="43" text-anchor="middle">Distributor</text>
-            <rect class="core" x="685" y="16" width="110" height="44" rx="10"/><text class="title" x="740" y="43" text-anchor="middle">Email worker</text>
-            <rect class="box" x="815" y="16" width="110" height="44" rx="10"/><text class="title" x="870" y="43" text-anchor="middle">Portal</text>
-          </g>
-          <line class="life" x1="70" y1="60" x2="70" y2="635"/>
-          <line class="life" x1="200" y1="60" x2="200" y2="635"/>
-          <line class="life" x1="330" y1="60" x2="330" y2="635"/>
-          <line class="life" x1="470" y1="60" x2="470" y2="635"/>
-          <line class="life" x1="610" y1="60" x2="610" y2="635"/>
-          <line class="life" x1="740" y1="60" x2="740" y2="635"/>
-          <line class="life" x1="870" y1="60" x2="870" y2="635"/>
-
-          <line class="edge" x1="70" y1="100" x2="198" y2="100" marker-end="url(#ar2)"/>
-          <text class="small lbl" x="135" y="93" text-anchor="middle">1 &middot; pays</text>
-
-          <line class="edge strong" x1="200" y1="138" x2="328" y2="138" marker-end="url(#ar2)"/>
-          <text class="small lbl" x="265" y="131" text-anchor="middle">2 &middot; paid webhook (HMAC)</text>
-
-          <rect class="note-box" x="338" y="158" width="250" height="40" rx="6"/>
-          <text class="small" x="346" y="174">3 &middot; save order + 1 key per item: PENDING</text>
-          <text class="small" x="346" y="190">redelivered webhook inserts nothing</text>
-
-          <line class="edge" x1="330" y1="226" x2="468" y2="226" marker-end="url(#ar2)"/>
-          <text class="small lbl" x="400" y="219" text-anchor="middle">4 &middot; one job per key</text>
-
-          <rect class="note-box" x="478" y="244" width="190" height="26" rx="6"/>
-          <text class="small" x="486" y="261">5 &middot; claim key: PROCESSING</text>
-
-          <line class="edge strong" x1="470" y1="302" x2="608" y2="302" marker-end="url(#ar2)"/>
-          <text class="small lbl" x="540" y="295" text-anchor="middle">6 &middot; book / sell</text>
-
-          <line class="edge" x1="610" y1="340" x2="472" y2="340" marker-end="url(#ar2)" stroke-dasharray="5 4"/>
-          <text class="small lbl" x="540" y="333" text-anchor="middle">7 &middot; operation id</text>
-
-          <rect class="note-box" x="478" y="358" width="150" height="26" rx="6"/>
-          <text class="small" x="486" y="375">8 &middot; save: KEY_BOOKED</text>
-
-          <line class="edge" x1="470" y1="416" x2="738" y2="416" marker-end="url(#ar2)"/>
-          <text class="small lbl" x="605" y="409" text-anchor="middle">9 &middot; queue &ldquo;key ready&rdquo; email</text>
-
-          <line class="edge" x1="740" y1="454" x2="72" y2="454" marker-end="url(#ar2)"/>
-          <text class="small lbl" x="405" y="447" text-anchor="middle">10 &middot; email with a portal link (never the key)</text>
-
-          <line class="edge" x1="70" y1="492" x2="868" y2="492" marker-end="url(#ar2)"/>
-          <text class="small lbl" x="470" y="485" text-anchor="middle">11 &middot; signs in with the store account (OAuth + PKCE)</text>
-
-          <line class="edge" x1="870" y1="530" x2="202" y2="530" marker-end="url(#ar2)"/>
-          <text class="small lbl" x="535" y="523" text-anchor="middle">12 &middot; ownership check</text>
-
-          <line class="edge strong" x1="870" y1="568" x2="612" y2="568" marker-end="url(#ar2)"/>
-          <text class="small lbl" x="740" y="561" text-anchor="middle">13 &middot; confirm booking</text>
-
-          <line class="edge" x1="870" y1="610" x2="72" y2="610" marker-end="url(#ar2)"/>
-          <text class="small lbl" x="470" y="603" text-anchor="middle">14 &middot; key shown: KEY_ACCEPTED</text>
-        </svg>
-      </div>
-      <figcaption><b>Order &rarr; game key.</b> The webhook is answered as soon as the order is saved; everything after step 3 runs on queues. The key is claimed (step 5) before any money is spent (step 6), which is what makes retries safe. Every numbered step writes an audit entry with the store order id as its trace id.</figcaption>
-    </figure>
-
-    <!-- State machine -->
-    <figure>
-      <div class="diagram" tabindex="0" role="region" aria-label="Key lifecycle diagram">
-        <svg class="dg" viewBox="0 0 920 350" role="img" aria-labelledby="st-t st-d">
-          <title id="st-t">Digital key lifecycle</title>
-          <desc id="st-d">A key starts PENDING when the order is paid. Unknown products go to MANUAL_PENDING. The worker claims it as PROCESSING. The distributor books it (KEY_BOOKED) or refuses (FAILED, which an admin can retry). If the distributor never answers, the key stays PROCESSING with a reason until an admin provides it. A booked key becomes KEY_ACCEPTED when the customer confirms or reveals it, or KEY_REJECTED when the customer cancels.</desc>
-          <defs>
-            <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
-          </defs>
-          <circle class="dot" cx="14" cy="173" r="7"/>
-          <line class="edge" x1="21" y1="173" x2="38" y2="173" marker-end="url(#ar3)"/>
-
-          <rect class="warn" x="40" y="150" width="140" height="46" rx="23"/><text class="title" x="110" y="178" text-anchor="middle">PENDING</text>
-          <rect class="core" x="260" y="150" width="150" height="46" rx="23"/><text class="title" x="335" y="178" text-anchor="middle">PROCESSING</text>
-          <rect class="box" x="490" y="150" width="150" height="46" rx="23"/><text class="title" x="565" y="178" text-anchor="middle">KEY_BOOKED</text>
-          <rect class="ok" x="730" y="150" width="170" height="46" rx="23"/><text class="title" x="815" y="178" text-anchor="middle">KEY_ACCEPTED</text>
-          <rect class="bad" x="730" y="40" width="170" height="46" rx="23"/><text class="title" x="815" y="68" text-anchor="middle">KEY_REJECTED</text>
-          <rect class="bad" x="260" y="40" width="150" height="46" rx="23"/><text class="title" x="335" y="68" text-anchor="middle">FAILED</text>
-          <rect class="warn" x="30" y="280" width="170" height="46" rx="23"/><text class="title" x="115" y="308" text-anchor="middle">MANUAL_PENDING</text>
-
-          <line class="edge" x1="180" y1="173" x2="258" y2="173" marker-end="url(#ar3)"/>
-          <text class="small lbl" x="219" y="165" text-anchor="middle">claimed</text>
-          <line class="edge" x1="410" y1="173" x2="488" y2="173" marker-end="url(#ar3)"/>
-          <text class="small lbl" x="449" y="165" text-anchor="middle">booked</text>
-          <line class="edge" x1="640" y1="173" x2="728" y2="173" marker-end="url(#ar3)"/>
-          <text class="small lbl" x="684" y="152" text-anchor="middle">customer</text>
-          <text class="small lbl" x="684" y="165" text-anchor="middle">confirms</text>
-          <line class="edge" x1="600" y1="150" x2="740" y2="86" marker-end="url(#ar3)"/>
-          <text class="small lbl" x="640" y="108" text-anchor="middle">customer cancels</text>
-          <line class="edge" x1="335" y1="150" x2="335" y2="88" marker-end="url(#ar3)"/>
-          <text class="small lbl" x="343" y="124">distributor refused</text>
-          <path class="edge" d="M260,63 C150,63 110,90 110,148" marker-end="url(#ar3)"/>
-          <text class="small lbl" x="178" y="108" text-anchor="middle">admin retry</text>
-          <line class="edge" x1="110" y1="196" x2="110" y2="278" marker-end="url(#ar3)"/>
-          <text class="small lbl" x="118" y="242">unknown product</text>
-
-          <path class="edge" d="M335,196 L335,240 L790,240 L790,198" marker-end="url(#ar3)" stroke-dasharray="5 4"/>
-          <text class="small lbl" x="562" y="258" text-anchor="middle">no answer in 30 s: stays PROCESSING with a reason, admin provides the key</text>
-          <path class="edge" d="M200,303 L840,303 L840,198" marker-end="url(#ar3)" stroke-dasharray="5 4"/>
-          <text class="small lbl" x="520" y="296" text-anchor="middle">admin provides the key</text>
-        </svg>
-      </div>
-      <figcaption><b>Key lifecycle.</b> Every state has an owner and an exit: the system moves keys along the top row; dashed paths are the admin fixes for the two cases software cannot decide alone. A key in <code>PROCESSING</code> can never be retried automatically &mdash; only resolved by a person.</figcaption>
-    </figure>
-
-    <!-- Bulk orders -->
-    <figure>
-      <div class="diagram" tabindex="0" role="region" aria-label="Bulk order flow diagram">
-        <svg class="dg" viewBox="0 0 920 430" role="img" aria-labelledby="bk-t bk-d">
-          <title id="bk-t">Bulk order flow</title>
-          <desc id="bk-d">Staff plan a bulk order with products, quantities and a time window. It is split into operations spread over the window, each with a delayed job. At its time a worker claims the operation, the distributor sells the key using the operation id as request id, and the operation and key are saved together. The key is then revealed and stored, and can be viewed or exported. Operations can be cancelled before their time; a refused purchase fails and can be rescheduled; with no answer the operation stays running until staff enter the key or mark it not sold.</desc>
-          <defs>
-            <marker id="ar5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
-          </defs>
-
-          <rect class="actor" x="10" y="40" width="165" height="74" rx="12"/>
-          <text class="title" x="92" y="66" text-anchor="middle">Staff plans it</text>
-          <text class="small" x="92" y="86" text-anchor="middle">products, quantities</text>
-          <text class="small" x="92" y="102" text-anchor="middle">and a time window</text>
-
-          <rect class="box" x="195" y="40" width="165" height="74" rx="10"/>
-          <text class="title" x="277" y="66" text-anchor="middle">Operations queued</text>
-          <text class="small" x="277" y="86" text-anchor="middle">spread over the window</text>
-          <text class="small" x="277" y="102" text-anchor="middle">one delayed job each</text>
-
-          <rect class="core" x="380" y="40" width="165" height="74" rx="10"/>
-          <text class="title" x="462" y="66" text-anchor="middle">Worker claims one</text>
-          <text class="small" x="462" y="86" text-anchor="middle">at its scheduled time</text>
-          <text class="small" x="462" y="102" text-anchor="middle">QUEUED &#8594; RUNNING</text>
-
-          <rect class="ext" x="565" y="40" width="165" height="74" rx="10"/>
-          <text class="title" x="647" y="66" text-anchor="middle">Distributor sells</text>
-          <text class="small" x="647" y="86" text-anchor="middle">request id is</text>
-          <text class="small" x="647" y="102" text-anchor="middle">the operation id</text>
-
-          <rect class="ok" x="750" y="40" width="160" height="74" rx="10"/>
-          <text class="title" x="830" y="66" text-anchor="middle">Key booked</text>
-          <text class="small" x="830" y="86" text-anchor="middle">operation + key saved</text>
-          <text class="small" x="830" y="102" text-anchor="middle">in one transaction</text>
-
-          <line class="edge" x1="175" y1="77" x2="193" y2="77" marker-end="url(#ar5)"/>
-          <line class="edge" x1="360" y1="77" x2="378" y2="77" marker-end="url(#ar5)"/>
-          <line class="edge strong" x1="545" y1="77" x2="563" y2="77" marker-end="url(#ar5)"/>
-          <line class="edge" x1="730" y1="77" x2="748" y2="77" marker-end="url(#ar5)"/>
-
-          <!-- branches -->
-          <rect class="bad" x="195" y="230" width="165" height="74" rx="10"/>
-          <text class="title" x="277" y="256" text-anchor="middle">Cancelled</text>
-          <text class="small" x="277" y="276" text-anchor="middle">order cancelled or</text>
-          <text class="small" x="277" y="292" text-anchor="middle">completed early</text>
-          <line class="edge" x1="277" y1="114" x2="277" y2="228" marker-end="url(#ar5)" stroke-dasharray="5 4"/>
-          <text class="small lbl" x="285" y="175">before its time</text>
-
-          <rect class="warn" x="380" y="230" width="165" height="92" rx="10"/>
-          <text class="title" x="462" y="256" text-anchor="middle">No answer (30 s)</text>
-          <text class="small" x="462" y="276" text-anchor="middle">stays RUNNING</text>
-          <text class="small" x="462" y="292" text-anchor="middle">staff settle it:</text>
-          <text class="small" x="462" y="308" text-anchor="middle">Enter key &#183; Not sold</text>
-          <line class="edge" x1="600" y1="114" x2="490" y2="228" marker-end="url(#ar5)" stroke-dasharray="5 4"/>
-          <text class="small lbl" x="520" y="175" text-anchor="middle">no answer</text>
-
-          <rect class="bad" x="565" y="230" width="165" height="74" rx="10"/>
-          <text class="title" x="647" y="256" text-anchor="middle">Refused</text>
-          <text class="small" x="647" y="276" text-anchor="middle">operation FAILED</text>
-          <text class="small" x="647" y="292" text-anchor="middle">staff can reschedule</text>
-          <line class="edge" x1="660" y1="114" x2="660" y2="228" marker-end="url(#ar5)"/>
-          <text class="small lbl" x="668" y="175">refused</text>
-
-          <rect class="box" x="750" y="230" width="160" height="74" rx="10"/>
-          <text class="title" x="830" y="256" text-anchor="middle">Key revealed</text>
-          <text class="small" x="830" y="276" text-anchor="middle">code saved:</text>
-          <text class="small" x="830" y="292" text-anchor="middle">COMPLETED</text>
-          <line class="edge" x1="830" y1="114" x2="830" y2="228" marker-end="url(#ar5)"/>
-          <text class="small lbl" x="838" y="175">reveal step</text>
-
-          <rect class="box" x="750" y="358" width="160" height="58" rx="10"/>
-          <text class="title" x="830" y="382" text-anchor="middle">Key storage</text>
-          <text class="small" x="830" y="400" text-anchor="middle">view &#183; audited export</text>
-          <line class="edge" x1="830" y1="304" x2="830" y2="356" marker-end="url(#ar5)"/>
-        </svg>
-      </div>
-      <figcaption><b>Bulk orders.</b> The same claim-before-buy rule as customer orders, applied to scheduled purchases. Because the request id is the operation id on every attempt, a retry is recognisable as the same purchase. Dashed paths never spend money; the only unclear case (no answer) waits for a person.</figcaption>
-    </figure>
-
-    <!-- Email -->
-    <figure>
-      <div class="diagram" tabindex="0" role="region" aria-label="Email queued sender diagram">
-        <svg class="dg" viewBox="0 0 920 345" role="img" aria-labelledby="em-t em-d">
-          <title id="em-t">Email: queued sender</title>
-          <desc id="em-d">Callers such as the booking worker, admin actions, invitations and notifications call send, which only adds a job to the email queue. The email worker renders the template and sends it through the provider's HTTP API to the inbox. Accepted emails are audited with the provider message id; temporary failures retry with backoff; a bad or inactive address is audited as failed with no retry. If the queue is unavailable the email is sent directly.</desc>
-          <defs>
-            <marker id="ar6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
-          </defs>
-
-          <path class="edge" d="M95,110 C95,40 705,40 705,123" marker-end="url(#ar6)" stroke-dasharray="5 4"/>
-          <text class="small lbl" x="400" y="34" text-anchor="middle">queue unavailable (Redis down or no answer in 3 s): send directly</text>
-
-          <rect class="box" x="10" y="110" width="170" height="100" rx="10"/>
-          <text class="title" x="95" y="135" text-anchor="middle">Callers</text>
-          <text class="small" x="95" y="155" text-anchor="middle">booking worker</text>
-          <text class="small" x="95" y="171" text-anchor="middle">admin actions</text>
-          <text class="small" x="95" y="187" text-anchor="middle">invites &#183; notifications</text>
-
-          <rect class="core" x="225" y="125" width="150" height="70" rx="10"/>
-          <text class="title" x="300" y="153" text-anchor="middle">email-queue</text>
-          <text class="small" x="300" y="173" text-anchor="middle">Redis &#183; BullMQ</text>
-
-          <rect class="core" x="420" y="115" width="170" height="90" rx="10"/>
-          <text class="title" x="505" y="142" text-anchor="middle">Email worker</text>
-          <text class="small" x="505" y="162" text-anchor="middle">renders the template</text>
-          <text class="small" x="505" y="178" text-anchor="middle">4 in parallel</text>
-
-          <rect class="ext" x="640" y="125" width="130" height="70" rx="10"/>
-          <text class="title" x="705" y="153" text-anchor="middle">Email API</text>
-          <text class="small" x="705" y="173" text-anchor="middle">provider</text>
-
-          <rect class="actor" x="815" y="135" width="95" height="50" rx="25"/>
-          <text class="title" x="862" y="165" text-anchor="middle">Inbox</text>
-
-          <line class="edge strong" x1="180" y1="160" x2="223" y2="160" marker-end="url(#ar6)"/>
-          <text class="small lbl" x="201" y="150" text-anchor="middle">send()</text>
-          <line class="edge" x1="375" y1="160" x2="418" y2="160" marker-end="url(#ar6)"/>
-          <line class="edge" x1="590" y1="160" x2="638" y2="160" marker-end="url(#ar6)"/>
-          <text class="small lbl" x="614" y="150" text-anchor="middle">HTTP</text>
-          <line class="edge" x1="770" y1="160" x2="813" y2="160" marker-end="url(#ar6)"/>
-
-          <!-- outcomes -->
-          <rect class="bad" x="140" y="255" width="230" height="66" rx="10"/>
-          <text class="title" x="255" y="281" text-anchor="middle">Bad or inactive address</text>
-          <text class="small" x="255" y="301" text-anchor="middle">audit: email.failed &#183; no retry</text>
-
-          <rect class="warn" x="395" y="255" width="220" height="82" rx="10"/>
-          <text class="title" x="505" y="281" text-anchor="middle">Temporary failure</text>
-          <text class="small" x="505" y="301" text-anchor="middle">5xx &#183; rate limit &#183; network</text>
-          <text class="small" x="505" y="317" text-anchor="middle">retry from 30 s, doubling, ~2 h</text>
-
-          <rect class="ok" x="640" y="255" width="270" height="66" rx="10"/>
-          <text class="title" x="775" y="281" text-anchor="middle">Accepted</text>
-          <text class="small" x="775" y="301" text-anchor="middle">audit: email.sent + provider message id</text>
-
-          <line class="edge" x1="470" y1="205" x2="300" y2="253" marker-end="url(#ar6)"/>
-          <line class="edge" x1="505" y1="207" x2="505" y2="253" marker-start="url(#ar6)" marker-end="url(#ar6)"/>
-          <line class="edge" x1="540" y1="205" x2="720" y2="253" marker-end="url(#ar6)"/>
-        </svg>
-      </div>
-      <figcaption><b>Email: a queued sender.</b> Callers hand the email to a queue and move on, so a purchase never waits for, or fails because of, email. The worker owns retries and the delivery record; the audit keeps who got which template and the provider&rsquo;s receipt, never the content &mdash; a key email contains the key.</figcaption>
-    </figure>
-
-    <!-- Deployment -->
-    <figure>
-      <div class="diagram" tabindex="0" role="region" aria-label="Delivery pipeline diagram">
-        <svg class="dg" viewBox="0 0 920 250" role="img" aria-labelledby="dp-t dp-d">
-          <title id="dp-t">Delivery pipeline and operations</title>
-          <desc id="dp-d">A push to main runs GitHub Actions to test and build container images, which are pushed to a container registry and deployed to a single cloud VM running Docker Compose. The VM has nightly database backups and an hourly health check that alerts admins.</desc>
-          <defs>
-            <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
-          </defs>
-          <rect class="actor" x="10" y="50" width="130" height="70" rx="35"/>
-          <text class="title" x="75" y="81" text-anchor="middle">Push to</text>
-          <text class="title" x="75" y="98" text-anchor="middle">main</text>
-
-          <rect class="box" x="180" y="50" width="180" height="70" rx="10"/>
-          <text class="title" x="270" y="76" text-anchor="middle">GitHub Actions</text>
-          <text class="small" x="270" y="94" text-anchor="middle">unit tests &middot; type-check</text>
-          <text class="small" x="270" y="109" text-anchor="middle">build images</text>
-
-          <rect class="box" x="400" y="50" width="150" height="70" rx="10"/>
-          <text class="title" x="475" y="81" text-anchor="middle">Container</text>
-          <text class="title" x="475" y="98" text-anchor="middle">registry</text>
-
-          <rect class="core" x="590" y="30" width="320" height="110" rx="12"/>
-          <text class="title" x="750" y="56" text-anchor="middle">Cloud VM &middot; Docker Compose</text>
-          <text class="small" x="750" y="78" text-anchor="middle">reverse proxy &middot; API + workers &middot; admin portal</text>
-          <text class="small" x="750" y="95" text-anchor="middle">customer portal &middot; PostgreSQL &middot; Redis</text>
-          <text class="small" x="750" y="112" text-anchor="middle">queue dashboard &middot; DB admin (internal only)</text>
-          <text class="small" x="750" y="129" text-anchor="middle">one Redis ACL user per app</text>
-
-          <line class="edge" x1="140" y1="85" x2="178" y2="85" marker-end="url(#ar4)"/>
-          <line class="edge" x1="360" y1="85" x2="398" y2="85" marker-end="url(#ar4)"/>
-          <line class="edge" x1="550" y1="85" x2="588" y2="85" marker-end="url(#ar4)"/>
-
-          <rect class="note-box" x="590" y="175" width="150" height="56" rx="8"/>
-          <text class="title" x="665" y="199" text-anchor="middle">Nightly backup</text>
-          <text class="small" x="665" y="217" text-anchor="middle">PostgreSQL dump</text>
-          <rect class="note-box" x="760" y="175" width="150" height="56" rx="8"/>
-          <text class="title" x="835" y="199" text-anchor="middle">Hourly health check</text>
-          <text class="small" x="835" y="217" text-anchor="middle">alerts admins</text>
-          <line class="edge" x1="665" y1="140" x2="665" y2="173" marker-end="url(#ar4)"/>
-          <line class="edge" x1="835" y1="140" x2="835" y2="173" marker-end="url(#ar4)"/>
-
-          <rect class="note-box" x="10" y="175" width="540" height="56" rx="8"/>
-          <text class="small" x="24" y="198">Database migrations run by hand in production, after review.</text>
-          <text class="small" x="24" y="216">Health check: database, Redis (alert above 70% memory) and every queue.</text>
-        </svg>
-      </div>
-      <figcaption><b>Delivery &amp; operations.</b> Deliberately simple: one VM, one compose file, fully automated build and deploy. The operational risk is covered by backups, health alerts and the audit log rather than by more infrastructure.</figcaption>
-    </figure>
-  </div>
-</section>
-
-<!-- 5 OUTCOME -->
-<section id="outcome">
-  <div class="wrap">
-    <h2>Outcome</h2>
-    <p class="intro">What changed for the business.</p>
-    <ul class="outcomes">
-      <li><b>Hands-off fulfilment</b>A paid order becomes a delivered key without anyone touching it.</li>
-      <li><b>No double spending by design</b>Retries, redelivered webhooks and supplier timeouts cannot buy the same key twice.</li>
-      <li><b>Problems are visible and fixable</b>Pending, failed and stuck keys show on the dashboard with a one-click fix, so operations staff handle support themselves.</li>
-      <li><b>A catalog that stays true</b>Products, stock and prices per market follow the supplier on a schedule, without manual edits.</li>
-      <li><b>Traceability end to end</b>One search reconstructs any order or configuration change; finance gets its numbers without asking a developer.</li>
-      <li><b>Protected keys</b>Keys reach only their owner, through an authenticated, ownership-checked portal &mdash; never by email or in logs.</li>
-    </ul>
-    <div class="next">
-      <h3>What I would do next</h3>
-      <ul>
-        <li>Record the remaining planned audit points (order completion, bulk-order bookings, rejected requests at the auth guard).</li>
-        <li>Summaries for every scheduled sync run, so a silent sync failure is as visible as a failed order.</li>
-        <li>Automate production database migrations behind the same review gate as the code.</li>
-      </ul>
-    </div>
-  </div>
-</section>
-
-<!-- STACK -->
-<section id="stack">
-  <div class="wrap">
-    <h2>Stack</h2>
-    <div class="stack-group"><h3>Backend</h3>
-      <ul class="stack"><li>NestJS 11</li><li>TypeScript</li><li>TypeORM</li><li>BullMQ</li><li>Scheduled jobs</li><li>Socket.IO</li><li>Jest</li></ul></div>
-    <div class="stack-group"><h3>Frontend</h3>
-      <ul class="stack"><li>Vue 3</li><li>Vuetify 3</li><li>Pinia</li><li>Vite</li><li>Server-rendered customer portal (Handlebars)</li></ul></div>
-    <div class="stack-group"><h3>Data &amp; integrations</h3>
-      <ul class="stack"><li>PostgreSQL 15</li><li>Redis 7</li><li>Shopify Admin GraphQL</li><li>Shopify Customer Account API (OAuth + PKCE)</li><li>Webhooks (HMAC)</li><li>Transactional email API</li></ul></div>
-    <div class="stack-group"><h3>Infrastructure</h3>
-      <ul class="stack"><li>Docker Compose</li><li>nginx</li><li>GitHub Actions</li><li>Container registry</li><li>CDN / TLS</li></ul></div>
-  </div>
-</section>
-
-</main>
-
-<footer id="contact">
-  <div class="wrap">
-    <p class="cta">Want to talk about a problem like this?</p>
-    <p><a href="https://github.com/the3ma">github.com/the3ma</a></p>
-    <p class="note">Client, supplier and infrastructure details are anonymized; the codebase is private. Diagrams are simplified redraws of the project&rsquo;s own design documentation.</p>
-  </div>
-</footer>
 </body>
 </html>

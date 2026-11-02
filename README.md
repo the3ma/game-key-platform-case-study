@@ -1,13 +1,16 @@
-# Case study: automating digital game-key sales end to end
+# Game-key fulfilment platform · Case study
 
-A one-page portfolio case study: the business problem, the constraints, the design decisions and the
-architecture of a full-stack platform that turns every paid store order into a delivered game key.
+A one-page portfolio case study: how a retailer's paid orders became delivered game keys automatically, safely and
+never bought twice. Business problem, risk mapping, architecture, design decisions, trade-offs and results.
 
-Plain HTML + CSS, no build step. Diagrams are inline SVG.
+Live: https://the3ma.github.io/game-key-platform-case-study/
 
-- `index.html` - the page
-- `assets/styles.css` - styles
+- `index.html` - the page (inline SVG diagrams, small inline script for theme, reading progress and contents tracking)
+- `assets/styles.css` - the design system (one token set, white and black themes via `light-dark()`)
+- `assets/fonts/` - self-hosted Schibsted Grotesk and JetBrains Mono (SIL Open Font License, licences included)
+- `PRODUCT.md`, `DESIGN.md` - product brief and design system record
 
-Client, supplier and infrastructure details are anonymized; the underlying codebase is private.
+Plain HTML + CSS, no build step. Client, supplier and infrastructure details are anonymized; the underlying codebase
+is private, and every figure on the page comes from the project's own documentation.
 
-Preview locally: open `index.html` in a browser. Hosted with GitHub Pages from the `main` branch root.
+Contact: the3ma@gmail.com · github.com/the3ma
