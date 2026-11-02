@@ -147,7 +147,8 @@ footer .cta { font-size: 1.15rem; color: var(--ink); margin: 0 0 0.6rem; }
 
 /* SVG diagram styling */
 .dg text { font-family: var(--font); fill: var(--ink); font-size: 13px; }
-.dg .small { font-size: 12px; fill: var(--muted); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.dg .small { font-size: 12px; fill: var(--muted); }
+.dg .lbl { paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
 .dg .title { font-weight: 700; }
 .dg .box { fill: var(--dg-box); stroke: var(--dg-box-stroke); stroke-width: 1.4; }
 .dg .core { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }

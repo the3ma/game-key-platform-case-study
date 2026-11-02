@@ -149,16 +149,34 @@
     </article>
 
     <article class="decision">
-      <h3>3. Everything slow or external goes through a queue</h3>
+      <h3>3. Bulk purchases run on a schedule, with the same money safety</h3>
+      <div class="pdw">
+        <div><span class="tag p">Problem</span><br>Staff need to buy many keys at once to fill the retailer&rsquo;s own key storage &mdash; spread across a time window instead of in one burst, and with nobody watching each purchase.</div>
+        <div><span class="tag d">Decision</span><br>A bulk order is split into operations spread across the chosen window, each with its own delayed job. At its time the worker claims the operation (<code>QUEUED &rarr; RUNNING</code>) before buying, sends the operation id as the request id on every attempt, and writes the operation and its key in one transaction. Booked keys are revealed in a separate step and stored. A running operation can&rsquo;t be cancelled or rescheduled; an unknown outcome is settled by staff (<em>Enter key</em> / <em>Not sold</em>).</div>
+        <div><span class="tag w">Why it matters</span><br>Hundreds of purchases run unattended over hours, and none of them can be paid twice. Exporting the stored key codes is itself an audited action.</div>
+      </div>
+    </article>
+
+    <article class="decision">
+      <h3>4. Everything slow or external goes through a queue</h3>
       <div class="pdw">
         <div><span class="tag p">Problem</span><br>The supplier, the store and the email provider are all slower and less reliable than our own code.</div>
-        <div><span class="tag d">Decision</span><br>Redis-backed BullMQ queues with dedicated workers for booking, catalog sync, per-product price sync, email and audit writes. Email retries with backoff for about two hours, stops at once on a permanently bad address, and falls back to a direct send if the queue itself is down.</div>
+        <div><span class="tag d">Decision</span><br>Redis-backed BullMQ queues with dedicated workers for booking, bulk purchases, catalog sync, per-product price sync, email and audit writes. Workers throw only on temporary errors, so the queue retries them, and finish cleanly on permanent ones, so a bad record never retries forever.</div>
         <div><span class="tag w">Why it matters</span><br>A webhook is answered in milliseconds; an outage at a partner delays work instead of losing it.</div>
       </div>
     </article>
 
     <article class="decision">
-      <h3>4. Change-only, scheduled catalog and price sync</h3>
+      <h3>5. Email is a queued side effect, never a blocker</h3>
+      <div class="pdw">
+        <div><span class="tag p">Problem</span><br>The email provider can be slow or down, but a key that has been bought must stay bought &mdash; and a key email is sensitive.</div>
+        <div><span class="tag d">Decision</span><br>A queued sender: callers only call <code>MailService.send()</code>, which adds a job and returns. An email worker renders the template and sends it through the provider&rsquo;s API. Temporary failures (5xx, rate limit, network) retry from 30&nbsp;s, doubling, 8 attempts over about two hours; a bad or inactive address stops at once. If the queue itself is unavailable, the email is sent directly. Every outcome is audited with the template, the recipient and the provider&rsquo;s message id &mdash; never the content.</div>
+        <div><span class="tag w">Why it matters</span><br>No request or purchase ever waits for, or fails because of, email &mdash; and there is proof of delivery for every message without a key ever reaching the logs.</div>
+      </div>
+    </article>
+
+    <article class="decision">
+      <h3>6. Change-only, scheduled catalog and price sync</h3>
       <div class="pdw">
         <div><span class="tag p">Problem</span><br>Thousands of products, prices per currency and country, per-market catalogs &mdash; and the store&rsquo;s API is rate-limited.</div>
         <div><span class="tag d">Decision</span><br>Scheduled syncs pull products, prices and stock from the supplier, enrich them with game metadata, and push to the store. Prices go one job per product, batched by price list and skipped when unchanged; a product without a base-currency price is never published.</div>
@@ -167,7 +185,7 @@
     </article>
 
     <article class="decision">
-      <h3>5. An audit trail that answers &ldquo;what happened?&rdquo; and can never break an order</h3>
+      <h3>7. An audit trail that answers &ldquo;what happened?&rdquo; and can never break an order</h3>
       <div class="pdw">
         <div><span class="tag p">Problem</span><br>Disputes and pricing mistakes need evidence; but logging must not slow down or fail the order it describes.</div>
         <div><span class="tag d">Decision</span><br>An append-only audit log fed through its own queue. Every admin write, every order step and every customer action is recorded with a trace id; old and new values are kept for configuration changes, which can be reverted with a conflict check. Secrets and key codes are masked before storage. Flows are ranked by business risk (critical / important / nice to have) to decide what must be traced.</div>
@@ -176,7 +194,7 @@
     </article>
 
     <article class="decision">
-      <h3>6. Safe by default for people and for customers</h3>
+      <h3>8. Safe by default for people and for customers</h3>
       <div class="pdw">
         <div><span class="tag p">Problem</span><br>A single admin click can wipe live store configuration; a guessed URL could expose someone else&rsquo;s key.</div>
         <div><span class="tag d">Decision</span><br>Destructive store operations require an explicit confirmation token and notify all admins. The customer portal signs in with the store&rsquo;s own customer accounts (OAuth + PKCE), checks order ownership on every request and rate-limits key actions. Emails carry a portal link, never the key.</div>
@@ -314,47 +332,47 @@
           <line class="life" x1="870" y1="60" x2="870" y2="635"/>
 
           <line class="edge" x1="70" y1="100" x2="198" y2="100" marker-end="url(#ar2)"/>
-          <text class="small" x="135" y="93" text-anchor="middle">1 &middot; pays</text>
+          <text class="small lbl" x="135" y="93" text-anchor="middle">1 &middot; pays</text>
 
           <line class="edge strong" x1="200" y1="138" x2="328" y2="138" marker-end="url(#ar2)"/>
-          <text class="small" x="265" y="131" text-anchor="middle">2 &middot; paid webhook (HMAC)</text>
+          <text class="small lbl" x="265" y="131" text-anchor="middle">2 &middot; paid webhook (HMAC)</text>
 
           <rect class="note-box" x="338" y="158" width="250" height="40" rx="6"/>
           <text class="small" x="346" y="174">3 &middot; save order + 1 key per item: PENDING</text>
           <text class="small" x="346" y="190">redelivered webhook inserts nothing</text>
 
           <line class="edge" x1="330" y1="226" x2="468" y2="226" marker-end="url(#ar2)"/>
-          <text class="small" x="400" y="219" text-anchor="middle">4 &middot; one job per key</text>
+          <text class="small lbl" x="400" y="219" text-anchor="middle">4 &middot; one job per key</text>
 
           <rect class="note-box" x="478" y="244" width="190" height="26" rx="6"/>
           <text class="small" x="486" y="261">5 &middot; claim key: PROCESSING</text>
 
           <line class="edge strong" x1="470" y1="302" x2="608" y2="302" marker-end="url(#ar2)"/>
-          <text class="small" x="540" y="295" text-anchor="middle">6 &middot; book / sell</text>
+          <text class="small lbl" x="540" y="295" text-anchor="middle">6 &middot; book / sell</text>
 
           <line class="edge" x1="610" y1="340" x2="472" y2="340" marker-end="url(#ar2)" stroke-dasharray="5 4"/>
-          <text class="small" x="540" y="333" text-anchor="middle">7 &middot; operation id</text>
+          <text class="small lbl" x="540" y="333" text-anchor="middle">7 &middot; operation id</text>
 
           <rect class="note-box" x="478" y="358" width="150" height="26" rx="6"/>
           <text class="small" x="486" y="375">8 &middot; save: KEY_BOOKED</text>
 
           <line class="edge" x1="470" y1="416" x2="738" y2="416" marker-end="url(#ar2)"/>
-          <text class="small" x="605" y="409" text-anchor="middle">9 &middot; queue &ldquo;key ready&rdquo; email</text>
+          <text class="small lbl" x="605" y="409" text-anchor="middle">9 &middot; queue &ldquo;key ready&rdquo; email</text>
 
           <line class="edge" x1="740" y1="454" x2="72" y2="454" marker-end="url(#ar2)"/>
-          <text class="small" x="405" y="447" text-anchor="middle">10 &middot; email with a portal link (never the key)</text>
+          <text class="small lbl" x="405" y="447" text-anchor="middle">10 &middot; email with a portal link (never the key)</text>
 
           <line class="edge" x1="70" y1="492" x2="868" y2="492" marker-end="url(#ar2)"/>
-          <text class="small" x="470" y="485" text-anchor="middle">11 &middot; signs in with the store account (OAuth + PKCE)</text>
+          <text class="small lbl" x="470" y="485" text-anchor="middle">11 &middot; signs in with the store account (OAuth + PKCE)</text>
 
           <line class="edge" x1="870" y1="530" x2="202" y2="530" marker-end="url(#ar2)"/>
-          <text class="small" x="535" y="523" text-anchor="middle">12 &middot; ownership check</text>
+          <text class="small lbl" x="535" y="523" text-anchor="middle">12 &middot; ownership check</text>
 
           <line class="edge strong" x1="870" y1="568" x2="612" y2="568" marker-end="url(#ar2)"/>
-          <text class="small" x="740" y="561" text-anchor="middle">13 &middot; confirm booking</text>
+          <text class="small lbl" x="740" y="561" text-anchor="middle">13 &middot; confirm booking</text>
 
           <line class="edge" x1="870" y1="610" x2="72" y2="610" marker-end="url(#ar2)"/>
-          <text class="small" x="470" y="603" text-anchor="middle">14 &middot; key shown: KEY_ACCEPTED</text>
+          <text class="small lbl" x="470" y="603" text-anchor="middle">14 &middot; key shown: KEY_ACCEPTED</text>
         </svg>
       </div>
       <figcaption><b>Order &rarr; game key.</b> The webhook is answered as soon as the order is saved; everything after step 3 runs on queues. The key is claimed (step 5) before any money is spent (step 6), which is what makes retries safe. Every numbered step writes an audit entry with the store order id as its trace id.</figcaption>
@@ -381,28 +399,171 @@
           <rect class="warn" x="30" y="280" width="170" height="46" rx="23"/><text class="title" x="115" y="308" text-anchor="middle">MANUAL_PENDING</text>
 
           <line class="edge" x1="180" y1="173" x2="258" y2="173" marker-end="url(#ar3)"/>
-          <text class="small" x="219" y="165" text-anchor="middle">claimed</text>
+          <text class="small lbl" x="219" y="165" text-anchor="middle">claimed</text>
           <line class="edge" x1="410" y1="173" x2="488" y2="173" marker-end="url(#ar3)"/>
-          <text class="small" x="449" y="165" text-anchor="middle">booked</text>
+          <text class="small lbl" x="449" y="165" text-anchor="middle">booked</text>
           <line class="edge" x1="640" y1="173" x2="728" y2="173" marker-end="url(#ar3)"/>
-          <text class="small" x="684" y="152" text-anchor="middle">customer</text>
-          <text class="small" x="684" y="165" text-anchor="middle">confirms</text>
+          <text class="small lbl" x="684" y="152" text-anchor="middle">customer</text>
+          <text class="small lbl" x="684" y="165" text-anchor="middle">confirms</text>
           <line class="edge" x1="600" y1="150" x2="740" y2="86" marker-end="url(#ar3)"/>
-          <text class="small" x="640" y="108" text-anchor="middle">customer cancels</text>
+          <text class="small lbl" x="640" y="108" text-anchor="middle">customer cancels</text>
           <line class="edge" x1="335" y1="150" x2="335" y2="88" marker-end="url(#ar3)"/>
-          <text class="small" x="343" y="124">distributor refused</text>
+          <text class="small lbl" x="343" y="124">distributor refused</text>
           <path class="edge" d="M260,63 C150,63 110,90 110,148" marker-end="url(#ar3)"/>
-          <text class="small" x="178" y="108" text-anchor="middle">admin retry</text>
+          <text class="small lbl" x="178" y="108" text-anchor="middle">admin retry</text>
           <line class="edge" x1="110" y1="196" x2="110" y2="278" marker-end="url(#ar3)"/>
-          <text class="small" x="118" y="242">unknown product</text>
+          <text class="small lbl" x="118" y="242">unknown product</text>
 
           <path class="edge" d="M335,196 L335,240 L790,240 L790,198" marker-end="url(#ar3)" stroke-dasharray="5 4"/>
-          <text class="small" x="562" y="258" text-anchor="middle">no answer in 30 s: stays PROCESSING with a reason, admin provides the key</text>
+          <text class="small lbl" x="562" y="258" text-anchor="middle">no answer in 30 s: stays PROCESSING with a reason, admin provides the key</text>
           <path class="edge" d="M200,303 L840,303 L840,198" marker-end="url(#ar3)" stroke-dasharray="5 4"/>
-          <text class="small" x="520" y="296" text-anchor="middle">admin provides the key</text>
+          <text class="small lbl" x="520" y="296" text-anchor="middle">admin provides the key</text>
         </svg>
       </div>
       <figcaption><b>Key lifecycle.</b> Every state has an owner and an exit: the system moves keys along the top row; dashed paths are the admin fixes for the two cases software cannot decide alone. A key in <code>PROCESSING</code> can never be retried automatically &mdash; only resolved by a person.</figcaption>
+    </figure>
+
+    <!-- Bulk orders -->
+    <figure>
+      <div class="diagram" tabindex="0" role="region" aria-label="Bulk order flow diagram">
+        <svg class="dg" viewBox="0 0 920 430" role="img" aria-labelledby="bk-t bk-d">
+          <title id="bk-t">Bulk order flow</title>
+          <desc id="bk-d">Staff plan a bulk order with products, quantities and a time window. It is split into operations spread over the window, each with a delayed job. At its time a worker claims the operation, the distributor sells the key using the operation id as request id, and the operation and key are saved together. The key is then revealed and stored, and can be viewed or exported. Operations can be cancelled before their time; a refused purchase fails and can be rescheduled; with no answer the operation stays running until staff enter the key or mark it not sold.</desc>
+          <defs>
+            <marker id="ar5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+
+          <rect class="actor" x="10" y="40" width="165" height="74" rx="12"/>
+          <text class="title" x="92" y="66" text-anchor="middle">Staff plans it</text>
+          <text class="small" x="92" y="86" text-anchor="middle">products, quantities</text>
+          <text class="small" x="92" y="102" text-anchor="middle">and a time window</text>
+
+          <rect class="box" x="195" y="40" width="165" height="74" rx="10"/>
+          <text class="title" x="277" y="66" text-anchor="middle">Operations queued</text>
+          <text class="small" x="277" y="86" text-anchor="middle">spread over the window</text>
+          <text class="small" x="277" y="102" text-anchor="middle">one delayed job each</text>
+
+          <rect class="core" x="380" y="40" width="165" height="74" rx="10"/>
+          <text class="title" x="462" y="66" text-anchor="middle">Worker claims one</text>
+          <text class="small" x="462" y="86" text-anchor="middle">at its scheduled time</text>
+          <text class="small" x="462" y="102" text-anchor="middle">QUEUED &#8594; RUNNING</text>
+
+          <rect class="ext" x="565" y="40" width="165" height="74" rx="10"/>
+          <text class="title" x="647" y="66" text-anchor="middle">Distributor sells</text>
+          <text class="small" x="647" y="86" text-anchor="middle">request id is</text>
+          <text class="small" x="647" y="102" text-anchor="middle">the operation id</text>
+
+          <rect class="ok" x="750" y="40" width="160" height="74" rx="10"/>
+          <text class="title" x="830" y="66" text-anchor="middle">Key booked</text>
+          <text class="small" x="830" y="86" text-anchor="middle">operation + key saved</text>
+          <text class="small" x="830" y="102" text-anchor="middle">in one transaction</text>
+
+          <line class="edge" x1="175" y1="77" x2="193" y2="77" marker-end="url(#ar5)"/>
+          <line class="edge" x1="360" y1="77" x2="378" y2="77" marker-end="url(#ar5)"/>
+          <line class="edge strong" x1="545" y1="77" x2="563" y2="77" marker-end="url(#ar5)"/>
+          <line class="edge" x1="730" y1="77" x2="748" y2="77" marker-end="url(#ar5)"/>
+
+          <!-- branches -->
+          <rect class="bad" x="195" y="230" width="165" height="74" rx="10"/>
+          <text class="title" x="277" y="256" text-anchor="middle">Cancelled</text>
+          <text class="small" x="277" y="276" text-anchor="middle">order cancelled or</text>
+          <text class="small" x="277" y="292" text-anchor="middle">completed early</text>
+          <line class="edge" x1="277" y1="114" x2="277" y2="228" marker-end="url(#ar5)" stroke-dasharray="5 4"/>
+          <text class="small lbl" x="285" y="175">before its time</text>
+
+          <rect class="warn" x="380" y="230" width="165" height="92" rx="10"/>
+          <text class="title" x="462" y="256" text-anchor="middle">No answer (30 s)</text>
+          <text class="small" x="462" y="276" text-anchor="middle">stays RUNNING</text>
+          <text class="small" x="462" y="292" text-anchor="middle">staff settle it:</text>
+          <text class="small" x="462" y="308" text-anchor="middle">Enter key &#183; Not sold</text>
+          <line class="edge" x1="600" y1="114" x2="490" y2="228" marker-end="url(#ar5)" stroke-dasharray="5 4"/>
+          <text class="small lbl" x="520" y="175" text-anchor="middle">no answer</text>
+
+          <rect class="bad" x="565" y="230" width="165" height="74" rx="10"/>
+          <text class="title" x="647" y="256" text-anchor="middle">Refused</text>
+          <text class="small" x="647" y="276" text-anchor="middle">operation FAILED</text>
+          <text class="small" x="647" y="292" text-anchor="middle">staff can reschedule</text>
+          <line class="edge" x1="660" y1="114" x2="660" y2="228" marker-end="url(#ar5)"/>
+          <text class="small lbl" x="668" y="175">refused</text>
+
+          <rect class="box" x="750" y="230" width="160" height="74" rx="10"/>
+          <text class="title" x="830" y="256" text-anchor="middle">Key revealed</text>
+          <text class="small" x="830" y="276" text-anchor="middle">code saved:</text>
+          <text class="small" x="830" y="292" text-anchor="middle">COMPLETED</text>
+          <line class="edge" x1="830" y1="114" x2="830" y2="228" marker-end="url(#ar5)"/>
+          <text class="small lbl" x="838" y="175">reveal step</text>
+
+          <rect class="box" x="750" y="358" width="160" height="58" rx="10"/>
+          <text class="title" x="830" y="382" text-anchor="middle">Key storage</text>
+          <text class="small" x="830" y="400" text-anchor="middle">view &#183; audited export</text>
+          <line class="edge" x1="830" y1="304" x2="830" y2="356" marker-end="url(#ar5)"/>
+        </svg>
+      </div>
+      <figcaption><b>Bulk orders.</b> The same claim-before-buy rule as customer orders, applied to scheduled purchases. Because the request id is the operation id on every attempt, a retry is recognisable as the same purchase. Dashed paths never spend money; the only unclear case (no answer) waits for a person.</figcaption>
+    </figure>
+
+    <!-- Email -->
+    <figure>
+      <div class="diagram" tabindex="0" role="region" aria-label="Email queued sender diagram">
+        <svg class="dg" viewBox="0 0 920 345" role="img" aria-labelledby="em-t em-d">
+          <title id="em-t">Email: queued sender</title>
+          <desc id="em-d">Callers such as the booking worker, admin actions, invitations and notifications call send, which only adds a job to the email queue. The email worker renders the template and sends it through the provider's HTTP API to the inbox. Accepted emails are audited with the provider message id; temporary failures retry with backoff; a bad or inactive address is audited as failed with no retry. If the queue is unavailable the email is sent directly.</desc>
+          <defs>
+            <marker id="ar6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+
+          <path class="edge" d="M95,110 C95,40 705,40 705,123" marker-end="url(#ar6)" stroke-dasharray="5 4"/>
+          <text class="small lbl" x="400" y="34" text-anchor="middle">queue unavailable (Redis down or no answer in 3 s): send directly</text>
+
+          <rect class="box" x="10" y="110" width="170" height="100" rx="10"/>
+          <text class="title" x="95" y="135" text-anchor="middle">Callers</text>
+          <text class="small" x="95" y="155" text-anchor="middle">booking worker</text>
+          <text class="small" x="95" y="171" text-anchor="middle">admin actions</text>
+          <text class="small" x="95" y="187" text-anchor="middle">invites &#183; notifications</text>
+
+          <rect class="core" x="225" y="125" width="150" height="70" rx="10"/>
+          <text class="title" x="300" y="153" text-anchor="middle">email-queue</text>
+          <text class="small" x="300" y="173" text-anchor="middle">Redis &#183; BullMQ</text>
+
+          <rect class="core" x="420" y="115" width="170" height="90" rx="10"/>
+          <text class="title" x="505" y="142" text-anchor="middle">Email worker</text>
+          <text class="small" x="505" y="162" text-anchor="middle">renders the template</text>
+          <text class="small" x="505" y="178" text-anchor="middle">4 in parallel</text>
+
+          <rect class="ext" x="640" y="125" width="130" height="70" rx="10"/>
+          <text class="title" x="705" y="153" text-anchor="middle">Email API</text>
+          <text class="small" x="705" y="173" text-anchor="middle">provider</text>
+
+          <rect class="actor" x="815" y="135" width="95" height="50" rx="25"/>
+          <text class="title" x="862" y="165" text-anchor="middle">Inbox</text>
+
+          <line class="edge strong" x1="180" y1="160" x2="223" y2="160" marker-end="url(#ar6)"/>
+          <text class="small lbl" x="201" y="150" text-anchor="middle">send()</text>
+          <line class="edge" x1="375" y1="160" x2="418" y2="160" marker-end="url(#ar6)"/>
+          <line class="edge" x1="590" y1="160" x2="638" y2="160" marker-end="url(#ar6)"/>
+          <text class="small lbl" x="614" y="150" text-anchor="middle">HTTP</text>
+          <line class="edge" x1="770" y1="160" x2="813" y2="160" marker-end="url(#ar6)"/>
+
+          <!-- outcomes -->
+          <rect class="bad" x="140" y="255" width="230" height="66" rx="10"/>
+          <text class="title" x="255" y="281" text-anchor="middle">Bad or inactive address</text>
+          <text class="small" x="255" y="301" text-anchor="middle">audit: email.failed &#183; no retry</text>
+
+          <rect class="warn" x="395" y="255" width="220" height="82" rx="10"/>
+          <text class="title" x="505" y="281" text-anchor="middle">Temporary failure</text>
+          <text class="small" x="505" y="301" text-anchor="middle">5xx &#183; rate limit &#183; network</text>
+          <text class="small" x="505" y="317" text-anchor="middle">retry from 30 s, doubling, ~2 h</text>
+
+          <rect class="ok" x="640" y="255" width="270" height="66" rx="10"/>
+          <text class="title" x="775" y="281" text-anchor="middle">Accepted</text>
+          <text class="small" x="775" y="301" text-anchor="middle">audit: email.sent + provider message id</text>
+
+          <line class="edge" x1="470" y1="205" x2="300" y2="253" marker-end="url(#ar6)"/>
+          <line class="edge" x1="505" y1="207" x2="505" y2="253" marker-start="url(#ar6)" marker-end="url(#ar6)"/>
+          <line class="edge" x1="540" y1="205" x2="720" y2="253" marker-end="url(#ar6)"/>
+        </svg>
+      </div>
+      <figcaption><b>Email: a queued sender.</b> Callers hand the email to a queue and move on, so a purchase never waits for, or fails because of, email. The worker owns retries and the delivery record; the audit keeps who got which template and the provider&rsquo;s receipt, never the content &mdash; a key email contains the key.</figcaption>
     </figure>
 
     <!-- Deployment -->
