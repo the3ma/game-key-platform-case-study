@@ -67,7 +67,6 @@
 <!-- HERO -->
 <div class="hero" id="top">
   <div class="wrap">
-    <p class="eyebrow">Case study &middot; Full-stack architecture</p>
     <h1>From paid order to delivered game key &mdash; automatically, safely, and never bought twice.</h1>
     <p class="lead">An online retailer sells digital game keys on its Shopify store and buys each key from a wholesale key distributor. I designed and built the platform that connects the two: it keeps the whole catalog and every price in sync, buys a key the moment an order is paid, and delivers it to the customer through a secure portal &mdash; with a full audit trail behind every step.</p>
     <ul class="facts">
@@ -82,7 +81,6 @@
 <!-- 1 PROBLEM -->
 <section id="problem">
   <div class="wrap">
-    <span class="num">01</span>
     <h2>The business problem</h2>
     <p class="intro">The retailer&rsquo;s product is not physical stock &mdash; it is a code bought from a supplier on demand. That makes the business only as good as the link between the store and the supplier.</p>
     <div class="two">
@@ -113,7 +111,6 @@
 <!-- 2 CONSTRAINTS -->
 <section id="hard">
   <div class="wrap">
-    <span class="num">02</span>
     <h2>What made it hard</h2>
     <p class="intro">The happy path is simple. The real work was in the failure modes &mdash; each of them costs money or trust.</p>
     <ul class="hard">
@@ -130,7 +127,6 @@
 <!-- 3 DECISIONS -->
 <section id="decisions">
   <div class="wrap">
-    <span class="num">03</span>
     <h2>Key decisions</h2>
     <p class="intro">Each decision starts from a business risk, not a technology. Problem &rarr; what I chose &rarr; why it matters.</p>
 
@@ -193,13 +189,13 @@
 <!-- 4 ARCHITECTURE -->
 <section id="architecture">
   <div class="wrap">
-    <span class="num">04</span>
     <h2>Architecture</h2>
     <p class="intro">Three applications, one database, one queue broker, five external systems. Diagrams redrawn and anonymized from the project&rsquo;s design documentation.</p>
+    <p class="scroll-hint">On a small screen, swipe a diagram sideways to see all of it.</p>
 
     <!-- System context -->
     <figure>
-      <div class="diagram">
+      <div class="diagram" tabindex="0" role="region" aria-label="System context diagram">
         <svg class="dg" viewBox="0 0 920 440" role="img" aria-labelledby="sys-t sys-d">
           <title id="sys-t">System context and containers</title>
           <desc id="sys-d">Customers and staff reach the platform through a CDN. A reverse proxy routes to the admin portal, the customer portal and the API with its workers. The API uses Redis and PostgreSQL and talks to the Shopify store, the key distributor, an email API, a game metadata API and an exchange-rate source.</desc>
@@ -249,11 +245,11 @@
           <text class="small" x="570" y="250" text-anchor="middle">scheduled syncs &middot; audit</text>
 
           <rect class="box" x="470" y="300" width="95" height="60" rx="10"/>
-          <text class="title" x="517" y="325" text-anchor="middle">Redis</text>
-          <text class="small" x="517" y="343" text-anchor="middle">queues &middot; sessions</text>
+          <text class="title" x="517" y="321" text-anchor="middle">Redis</text>
+          <text class="small" x="517" y="338" text-anchor="middle">queues</text><text class="small" x="517" y="352" text-anchor="middle">sessions</text>
           <rect class="box" x="575" y="300" width="95" height="60" rx="10"/>
-          <text class="title" x="622" y="325" text-anchor="middle">PostgreSQL</text>
-          <text class="small" x="622" y="342" text-anchor="middle">orders &middot; keys</text><text class="small" x="622" y="355" text-anchor="middle">audit log</text>
+          <text class="title" x="622" y="321" text-anchor="middle">PostgreSQL</text>
+          <text class="small" x="622" y="338" text-anchor="middle">orders &middot; keys</text><text class="small" x="622" y="352" text-anchor="middle">audit log</text>
 
           <line class="edge" x1="442" y1="205" x2="468" y2="88" marker-end="url(#ar)"/>
           <line class="edge" x1="442" y1="212" x2="468" y2="150" marker-end="url(#ar)"/>
@@ -264,10 +260,10 @@
           <!-- externals -->
           <rect class="ext" x="740" y="40" width="165" height="48" rx="10"/>
           <text class="title" x="822" y="61" text-anchor="middle">Shopify store</text>
-          <text class="small" x="822" y="77" text-anchor="middle">catalog &middot; prices &middot; webhook</text>
+          <text class="small" x="822" y="77" text-anchor="middle">catalog &middot; webhook</text>
           <rect class="ext" x="740" y="120" width="165" height="48" rx="10"/>
           <text class="title" x="822" y="141" text-anchor="middle">Key distributor</text>
-          <text class="small" x="822" y="157" text-anchor="middle">products &middot; book &middot; confirm</text>
+          <text class="small" x="822" y="157" text-anchor="middle">book &middot; confirm keys</text>
           <rect class="ext" x="740" y="200" width="165" height="48" rx="10"/>
           <text class="title" x="822" y="221" text-anchor="middle">Email API</text>
           <text class="small" x="822" y="237" text-anchor="middle">transactional email</text>
@@ -292,7 +288,7 @@
 
     <!-- Sequence -->
     <figure>
-      <div class="diagram">
+      <div class="diagram" tabindex="0" role="region" aria-label="Order to game key sequence diagram">
         <svg class="dg" viewBox="0 0 940 650" role="img" aria-labelledby="seq-t seq-d">
           <title id="seq-t">Order to game key sequence</title>
           <desc id="seq-d">The customer pays; the store sends a verified webhook; the API saves the order with one pending key per item and queues a booking job per key; the worker claims the key, books it at the distributor, saves it as booked and queues an email with a portal link; the customer signs in to the portal, ownership is checked, the key is confirmed at the distributor and shown.</desc>
@@ -366,7 +362,7 @@
 
     <!-- State machine -->
     <figure>
-      <div class="diagram">
+      <div class="diagram" tabindex="0" role="region" aria-label="Key lifecycle diagram">
         <svg class="dg" viewBox="0 0 920 350" role="img" aria-labelledby="st-t st-d">
           <title id="st-t">Digital key lifecycle</title>
           <desc id="st-d">A key starts PENDING when the order is paid. Unknown products go to MANUAL_PENDING. The worker claims it as PROCESSING. The distributor books it (KEY_BOOKED) or refuses (FAILED, which an admin can retry). If the distributor never answers, the key stays PROCESSING with a reason until an admin provides it. A booked key becomes KEY_ACCEPTED when the customer confirms or reveals it, or KEY_REJECTED when the customer cancels.</desc>
@@ -401,7 +397,7 @@
           <text class="small" x="118" y="242">unknown product</text>
 
           <path class="edge" d="M335,196 L335,240 L790,240 L790,198" marker-end="url(#ar3)" stroke-dasharray="5 4"/>
-          <text class="small" x="562" y="258" text-anchor="middle">no answer in 30 s: stays PROCESSING with a reason &rarr; admin checks the distributor, provides the key</text>
+          <text class="small" x="562" y="258" text-anchor="middle">no answer in 30 s: stays PROCESSING with a reason, admin provides the key</text>
           <path class="edge" d="M200,303 L840,303 L840,198" marker-end="url(#ar3)" stroke-dasharray="5 4"/>
           <text class="small" x="520" y="296" text-anchor="middle">admin provides the key</text>
         </svg>
@@ -411,7 +407,7 @@
 
     <!-- Deployment -->
     <figure>
-      <div class="diagram">
+      <div class="diagram" tabindex="0" role="region" aria-label="Delivery pipeline diagram">
         <svg class="dg" viewBox="0 0 920 250" role="img" aria-labelledby="dp-t dp-d">
           <title id="dp-t">Delivery pipeline and operations</title>
           <desc id="dp-d">A push to main runs GitHub Actions to test and build container images, which are pushed to a container registry and deployed to a single cloud VM running Docker Compose. The VM has nightly database backups and an hourly health check that alerts admins.</desc>
@@ -464,7 +460,6 @@
 <!-- 5 OUTCOME -->
 <section id="outcome">
   <div class="wrap">
-    <span class="num">05</span>
     <h2>Outcome</h2>
     <p class="intro">What changed for the business.</p>
     <ul class="outcomes">
@@ -489,7 +484,6 @@
 <!-- STACK -->
 <section id="stack">
   <div class="wrap">
-    <span class="num">06</span>
     <h2>Stack</h2>
     <div class="stack-group"><h3>Backend</h3>
       <ul class="stack"><li>NestJS 11</li><li>TypeScript</li><li>TypeORM</li><li>BullMQ</li><li>Scheduled jobs</li><li>Socket.IO</li><li>Jest</li></ul></div>

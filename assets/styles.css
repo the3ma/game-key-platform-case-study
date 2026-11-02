@@ -26,12 +26,32 @@
   --dg-note-stroke: #a3a3a3;
   --radius: 14px;
   --max: 1080px;
-  --font: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
-  --mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+
+/* Self-hosted IBM Plex (SIL Open Font License 1.1, see assets/fonts/OFL.txt). */
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("fonts/ibm-plex-sans-latin-var.woff2") format("woff2");
+  font-weight: 100 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("fonts/ibm-plex-mono-latin-500.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
 }
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
+::selection { background: var(--ink); color: var(--on-accent); }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 4px; }
+a { text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
+a:hover { text-decoration-thickness: 2px; }
 body {
   margin: 0;
   font-family: var(--font);
@@ -41,6 +61,7 @@ body {
   font-size: 17px;
 }
 img, svg { max-width: 100%; height: auto; display: block; }
+p, li, figcaption { text-wrap: pretty; }
 a { color: var(--accent); }
 code { font-family: var(--mono); font-size: 0.88em; background: var(--accent-soft); padding: 0.1em 0.35em; border-radius: 5px; }
 
@@ -64,33 +85,30 @@ code { font-family: var(--mono); font-size: 0.88em; background: var(--accent-sof
 
 /* Hero */
 .hero { padding: 5.5rem 0 3.5rem; }
-.eyebrow { text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.78rem; font-weight: 700; color: var(--accent); margin: 0 0 1rem; }
-.hero h1 { font-size: clamp(2.1rem, 4.6vw, 3.4rem); line-height: 1.12; letter-spacing: -0.025em; margin: 0 0 1.3rem; max-width: 20ch; }
-.hero .lead { font-size: 1.2rem; color: var(--muted); max-width: 62ch; margin: 0 0 2.2rem; }
+.hero h1 { font-size: clamp(2.1rem, 4.6vw, 3.4rem); line-height: 1.1; letter-spacing: -0.03em; font-weight: 700; margin: 0 0 1.3rem; max-width: 20ch; text-wrap: balance; }
+.hero .lead { font-size: 1.2rem; color: var(--muted); max-width: 62ch; margin: 0 0 2.6rem; }
 
-.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1rem; margin: 0; padding: 0; list-style: none; }
-.facts li { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem 1.2rem; }
-.facts b { display: block; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; margin-bottom: 0.2rem; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0 2rem; margin: 0; padding: 0; list-style: none; }
+.facts li { border-top: 1px solid var(--ink); padding: 0.8rem 0 0.4rem; }
+.facts b { display: block; font-size: 0.85rem; color: var(--muted); font-weight: 500; margin-bottom: 0.15rem; }
 
 /* Sections */
-section { padding: 4rem 0; border-top: 1px solid var(--line); }
-.num { font-family: var(--mono); color: var(--accent); font-size: 0.9rem; font-weight: 600; }
-h2 { font-size: clamp(1.6rem, 3vw, 2.2rem); letter-spacing: -0.02em; line-height: 1.2; margin: 0.3rem 0 1.2rem; }
+section { padding: 4.5rem 0; border-top: 1px solid var(--line); }
+h2 { font-size: clamp(1.6rem, 3vw, 2.2rem); letter-spacing: -0.02em; line-height: 1.2; margin: 0 0 1rem; text-wrap: balance; }
 h3 { font-size: 1.15rem; margin: 0 0 0.5rem; letter-spacing: -0.01em; }
 .intro { color: var(--muted); max-width: 68ch; margin: 0 0 2rem; font-size: 1.07rem; }
 .prose { max-width: 70ch; }
 
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.4rem 1.5rem; }
-.panel.before { border-top: 4px solid var(--bad); }
-.panel.after { border-top: 4px solid var(--ok); }
+.panel.after { background: var(--ink); color: var(--on-accent); border-color: var(--ink); }
 .panel ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
 .panel li { margin: 0.3rem 0; }
 
-.hard { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; list-style: none; padding: 0; margin: 0; }
-.hard li { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: 10px; padding: 1rem 1.2rem; }
+.hard { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 2.5rem; list-style: none; padding: 0; margin: 0; }
+.hard li { border-top: 1px solid var(--line); padding: 1rem 0 1.2rem; }
 .hard b { display: block; margin-bottom: 0.2rem; }
-.hard span { color: var(--muted); font-size: 0.95rem; }
+.hard span { color: var(--muted); font-size: 0.97rem; }
 
 /* Decisions */
 .decision { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.6rem 1.7rem; margin-bottom: 1.2rem; }
@@ -104,17 +122,19 @@ h3 { font-size: 1.15rem; margin: 0 0 0.5rem; letter-spacing: -0.01em; }
 
 /* Figures */
 figure { margin: 0 0 2.5rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.5rem; }
-figcaption { color: var(--muted); font-size: 0.93rem; margin-top: 1rem; max-width: 75ch; }
+figcaption { color: var(--muted); font-size: 0.95rem; margin-top: 1rem; max-width: 58ch; }
 figcaption b { color: var(--ink); }
-.diagram { overflow-x: auto; }
-.diagram svg { min-width: 680px; margin: 0 auto; }
+/* Diagrams keep their drawn size (labels stay >= 12px) and scroll sideways on narrow screens. */
+.diagram { overflow-x: auto; scrollbar-color: var(--muted) transparent; border-radius: 6px; }
+.diagram svg { min-width: 920px; margin: 0 auto; }
+.scroll-hint { display: none; font-size: 0.85rem; color: var(--muted); margin: 0 0 0.6rem; }
 
 /* Outcome */
-.outcomes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; list-style: none; margin: 0 0 2rem; padding: 0; }
-.outcomes li { background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--ok); border-radius: 10px; padding: 1.1rem 1.2rem; }
+.outcomes { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 2.5rem; list-style: none; margin: 0 0 2.5rem; padding: 0; }
+.outcomes li { border-top: 1px solid var(--ink); padding: 1rem 0 1.2rem; }
 .outcomes b { display: block; margin-bottom: 0.25rem; }
 .next { background: var(--accent-soft); border-radius: var(--radius); padding: 1.3rem 1.5rem; }
-.next ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
+.next ul { margin: 0.4rem 0 0; padding-left: 1.1rem; max-width: 68ch; }
 
 .stack { display: flex; flex-wrap: wrap; gap: 0.5rem; list-style: none; padding: 0; margin: 0 0 1.5rem; }
 .stack li { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 0.3rem 0.85rem; font-size: 0.9rem; }
@@ -127,7 +147,7 @@ footer .cta { font-size: 1.15rem; color: var(--ink); margin: 0 0 0.6rem; }
 
 /* SVG diagram styling */
 .dg text { font-family: var(--font); fill: var(--ink); font-size: 13px; }
-.dg .small { font-size: 11px; fill: var(--muted); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.dg .small { font-size: 12px; fill: var(--muted); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
 .dg .title { font-weight: 700; }
 .dg .box { fill: var(--dg-box); stroke: var(--dg-box-stroke); stroke-width: 1.4; }
 .dg .core { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
@@ -146,6 +166,7 @@ footer .cta { font-size: 1.15rem; color: var(--ink); margin: 0 0 0.6rem; }
   .two, .pdw { grid-template-columns: 1fr; }
   .nav ul { display: none; }
   .hero { padding-top: 3.5rem; }
+  .scroll-hint { display: block; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -209,10 +230,6 @@ footer .cta { font-size: 1.15rem; color: var(--ink); margin: 0 0 0.6rem; }
 }
 
 /* ---------- Monochrome meaning: shape and line style instead of colour ---------- */
-.panel.before { border-top: 4px dashed var(--muted); }
-.panel.after { border-top: 4px solid var(--ink); }
-.hard li { border-left: 4px solid var(--ink); }
-.outcomes li { border-top: 4px solid var(--ink); }
 .tag.p { background: transparent; color: var(--ink); border: 1px solid var(--ink); }
 .tag.d { background: var(--ink); color: var(--on-accent); }
 .tag.w { background: var(--accent-soft); color: var(--ink); border: 1px solid var(--line); }
