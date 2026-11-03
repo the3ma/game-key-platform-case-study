@@ -42,9 +42,9 @@ twice, a silent supplier, a redelivered webhook, a leaked key) and shows the mec
 ## Brand Commitments
 
 - Header label is the product purpose, not the author handle: "Game-key fulfilment platform · case study".
-- Black-and-white palette with exactly one accent colour; a white theme and a black theme with a visible toggle that
-  follows the system setting until the visitor chooses.
-- Contact: the3ma@gmail.com, github.com/the3ma.
+- Visual system shared with the async-export-pipeline case study (night transit map, dark-first, light toggle);
+  colour only on the export / audit / notify lines.
+- Contact: the3ma@gmail.com, linkedin.com/in/hristo-atanasov-84a525175, github.com/the3ma. No phone.
 
 ## Evidence on Hand
 
